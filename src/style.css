@@ -176,6 +176,25 @@ p {
     radial-gradient(900px 500px at 80% 40%, rgba(11, 61, 46, 0.06), transparent 55%);
 }
 
+.hero-photo {
+  position: relative;
+}
+
+.hero-photo::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(251, 250, 247, 0.55), rgba(251, 250, 247, 0.92)),
+    radial-gradient(900px 500px at 70% 25%, rgba(11, 61, 46, 0.16), transparent 60%),
+    radial-gradient(800px 450px at 20% 40%, rgba(20, 20, 20, 0.06), transparent 60%);
+  pointer-events: none;
+}
+
+.hero-photo .container {
+  position: relative;
+}
+
 .hero-inner {
   display: grid;
   grid-template-columns: 1fr;
@@ -204,6 +223,30 @@ p {
   font-size: 0.78rem;
   color: var(--faint);
   margin-bottom: 0.8rem;
+}
+
+.hero-links {
+  margin-top: 1.1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+  color: var(--muted);
+}
+
+.inline-link {
+  color: var(--link);
+  border-bottom: 1px solid rgba(11, 61, 46, 0.25);
+  padding-bottom: 0.08rem;
+}
+
+.inline-link:hover {
+  border-bottom-color: rgba(11, 61, 46, 0.6);
+  opacity: 1;
+}
+
+.dot {
+  color: var(--faint);
 }
 
 .hero-actions {
@@ -337,6 +380,47 @@ p {
   margin-bottom: 1.1rem;
 }
 
+.forecast {
+  margin-top: 0.9rem;
+  padding: 0.9rem 1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(20, 20, 20, 0.12);
+  background: rgba(20, 20, 20, 0.02);
+}
+
+.forecast-title {
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.forecast-body {
+  margin-top: 0.35rem;
+  font-weight: 650;
+}
+
+.warning {
+  margin-top: 0.9rem;
+  padding: 0.9rem 1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(140, 33, 33, 0.2);
+  background: rgba(140, 33, 33, 0.06);
+}
+
+.warning-title {
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(140, 33, 33, 0.8);
+}
+
+.warning-body {
+  margin-top: 0.35rem;
+  color: rgba(140, 33, 33, 0.85);
+  font-weight: 650;
+}
+
 .form {
   display: grid;
   gap: 1rem;
@@ -363,6 +447,10 @@ p {
   grid-template-columns: 1fr auto;
   gap: 0.65rem;
   align-items: center;
+}
+
+.control-single {
+  grid-template-columns: 1fr;
 }
 
 input,
