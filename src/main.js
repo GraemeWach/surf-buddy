@@ -181,7 +181,7 @@ app.innerHTML = `
 
             <div class="map-wrap" aria-label="Map">
               <div id="map" class="map" role="application" aria-label="Map of buoy and surf spots"></div>
-              <div class="map-foot">Click a spot marker to update the recommendation.</div>
+              <div class="map-foot">Click a surf spot or a buoy marker to update the data source.</div>
             </div>
 
             <form id="board-form" class="form" novalidate>
@@ -319,6 +319,7 @@ const nearbyListEl = document.getElementById('nearby-list')
 
 let latestConditions = null
 let selectedSpotId = 'cox-bay'
+let selectedStationOverride = null
 
 const spots = [
   {
@@ -363,7 +364,28 @@ const spots = [
   },
 ]
 
+const buoys = [
+  { station: '46206', name: 'La Perouse Bank', lat: 48.84, lon: -126.0 },
+  { station: '46204', name: 'Middle Nomad', lat: 51.38, lon: -128.77 },
+]
+
 const getSelectedSpot = () => spots.find((s) => s.id === selectedSpotId) ?? spots[0]
+
+const getActiveStation = () => {
+  if (selectedStationOverride) return selectedStationOverride
+  return getSelectedSpot().station
+}
+
+const highlightSelectedBuoy = () => {
+  const activeStation = getActiveStation()
+  buoyMarkers.forEach(({ station, marker }) => {
+    const isActive = station === activeStation
+    marker.setStyle({
+      radius: isActive ? 9 : 7,
+      fillOpacity: isActive ? 0.4 : 0.25,
+    })
+  })
+}
 
 const setHint = (text) => {
   hintEl.textContent = text
@@ -459,6 +481,7 @@ let map = null
 let spotMarkers = []
 let userMarker = null
 let geoWatchId = null
+let buoyMarkers = []
 
 const toRad = (d) => (d * Math.PI) / 180
 
@@ -582,6 +605,22 @@ const ensureMap = () => {
     attribution: '&copy; OpenStreetMap contributors',
   }).addTo(map)
 
+  buoyMarkers = buoys.map((b) => {
+    const m = window.L.circleMarker([b.lat, b.lon], {
+      radius: 7,
+      weight: 2,
+      color: '#0b3d2e',
+      fillColor: '#0b3d2e',
+      fillOpacity: 0.25,
+    }).addTo(map)
+    m.bindPopup(`<strong>Buoy</strong><br/>${b.name} (${b.station})<br/>Click to use this buoy.`)
+    m.on('click', () => {
+      selectedStationOverride = b.station
+      loadForecast()
+    })
+    return { station: b.station, marker: m }
+  })
+
   spotMarkers = spots
     .filter((s) => s.id !== 'north-coast')
     .map((s) => {
@@ -599,10 +638,21 @@ const ensureMap = () => {
 const loadForecast = async () => {
   try {
     const spot = getSelectedSpot()
-    const url = `/api/forecast?station=${encodeURIComponent(spot.station)}`
+    const station = getActiveStation()
+    const url = `/api/forecast?station=${encodeURIComponent(station)}`
     const res = await fetch(url, { headers: { accept: 'application/json' } })
-    if (!res.ok) throw new Error(`Forecast error: ${res.status}`)
-    const json = await res.json()
+    const text = await res.text()
+    if (!res.ok) {
+      console.warn('Forecast error response:', res.status, text)
+      throw new Error(`Forecast error: ${res.status} ${text}`)
+    }
+
+    let json
+    try {
+      json = JSON.parse(text)
+    } catch {
+      throw new Error('Forecast error: invalid JSON')
+    }
     if (!json?.ok) throw new Error('Forecast error')
 
     const waveM = json?.waves?.significantWaveHeightM
@@ -634,24 +684,11 @@ const loadForecast = async () => {
     forecastBodyEl.textContent = fmtCond(latestConditions)
 
     ensureMap()
-    if (map && Number.isFinite(latestConditions.stationLat) && Number.isFinite(latestConditions.stationLon)) {
-      const pos = [latestConditions.stationLat, latestConditions.stationLon]
-      if (!buoyMarker) {
-        buoyMarker = window.L.circleMarker(pos, {
-          radius: 7,
-          weight: 2,
-          color: '#0b3d2e',
-          fillColor: '#0b3d2e',
-          fillOpacity: 0.25,
-        }).addTo(map)
-        buoyMarker.bindPopup(`<strong>Buoy</strong><br/>${latestConditions.stationName} (${latestConditions.station})`)
-      } else {
-        buoyMarker.setLatLng(pos)
-      }
-    }
-  } catch {
+    highlightSelectedBuoy()
+  } catch (err) {
     latestConditions = null
-    forecastBodyEl.textContent = 'Buoy data unavailable.'
+    forecastBodyEl.textContent =
+      err instanceof Error && err.message ? err.message : 'Buoy data unavailable.'
   } finally {
     render()
   }
@@ -669,6 +706,7 @@ spots.forEach((s) => {
 spotEl.value = selectedSpotId
 spotEl.addEventListener('change', () => {
   selectedSpotId = spotEl.value
+  selectedStationOverride = null
   loadForecast()
 })
 
@@ -676,6 +714,7 @@ ensureMap()
 loadForecast()
 
 geoBtnEl.addEventListener('click', () => {
+  nearbyListEl.innerHTML = ''
   nearbyEl.hidden = true
 
   if (!navigator.geolocation) {
