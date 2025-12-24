@@ -126,8 +126,7 @@ app.innerHTML = `
           <span class="brand-name">Surf Buddy</span>
         </a>
         <nav class="nav" aria-label="Primary">
-          <a class="nav-link" href="#finder">Board Finder</a>
-          <a class="nav-link" href="#notes">Notes</a>
+          <a class="nav-link" href="#finder">Finder</a>
         </nav>
       </div>
     </header>
@@ -136,16 +135,9 @@ app.innerHTML = `
       <section class="hero hero-photo">
         <div class="container hero-inner">
           <div class="hero-copy">
-            <div class="kicker">Tofino • Board recommendations</div>
-            <h1>Surfboard recommendations, tuned to the conditions.</h1>
-            <p class="lead">
-              We combine height, weight, and ability with nearby buoy readings to suggest board type, length,
-              and volume.
-            </p>
+            <h1>Surf Buddy</h1>
             <div class="hero-links">
-              <a class="inline-link" href="https://www.surfline.com/" target="_blank" rel="noreferrer">Surfline</a>
-              <span class="dot" aria-hidden="true">•</span>
-              <a class="inline-link" href="#finder">Use Board Finder</a>
+              <a class="btn btn-primary" href="#finder">Start</a>
             </div>
           </div>
         </div>
@@ -156,7 +148,6 @@ app.innerHTML = `
           <div class="panel">
             <div class="panel-head">
               <h2>Board Finder</h2>
-              <p class="sublead">Live conditions are pulled from a nearby NOAA buoy. Use as guidance, not a guarantee.</p>
               <div class="spot-row">
                 <label class="spot-label" for="spot">Spot</label>
                 <select id="spot" aria-label="Spot"></select>
@@ -181,7 +172,6 @@ app.innerHTML = `
 
             <div class="map-wrap" aria-label="Map">
               <div id="map" class="map" role="application" aria-label="Map of buoy and surf spots"></div>
-              <div class="map-foot">Click a surf spot or a buoy marker to update the data source.</div>
             </div>
 
             <form id="board-form" class="form" novalidate>
@@ -250,32 +240,19 @@ app.innerHTML = `
                   <div class="result-k">Volume</div>
                   <div class="result-v" id="short-volume"></div>
                 </div>
-                <div class="result-foot">If you’re not sure, start with the main recommendation.</div>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      <section id="notes" class="section section-muted">
-        <div class="container prose">
-          <h2>Notes</h2>
-          <p>
-            Surfline remains the best overall forecast experience. This site uses publicly available buoy readings
-            to keep things automatic without API keys.
-          </p>
-          <p>
-            Next we can improve accuracy by adding local spots, tide windows, swell direction filters, and an ability-based
-            safety gate.
-          </p>
-        </div>
-      </section>
     </main>
 
     <footer class="site-footer">
       <div class="container footer-inner">
         <div>© ${new Date().getFullYear()} Surf Buddy</div>
         <div class="footer-links">
+          <a href="https://commons.wikimedia.org/wiki/File:Crab_shell_partially_buried_in_sand_at_Long_Beach,_in_Tofino,_British_Columbia_Canada.JPG" target="_blank" rel="noreferrer">Photo credit</a>
           <a href="https://github.com/GraemeWach/surf-buddy" target="_blank" rel="noreferrer">GitHub</a>
         </div>
       </div>
