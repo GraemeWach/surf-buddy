@@ -301,8 +301,9 @@ weightUnitEl.value = 'lb'
 let latestConditions = null
 let selectedSpotId = 'cox-bay'
 let selectedStationOverride = null
+let activeProvince = null
 
-const spots = [
+const allSpots = [
   {
     id: 'cox-bay',
     name: 'Cox Bay',
@@ -310,6 +311,7 @@ const spots = [
     lon: -125.883,
     exposure: 1.05,
     station: '46206',
+    province: 'BC',
   },
   {
     id: 'chesterman',
@@ -318,6 +320,7 @@ const spots = [
     lon: -125.904,
     exposure: 0.9,
     station: '46206',
+    province: 'BC',
   },
   {
     id: 'long-beach',
@@ -326,6 +329,7 @@ const spots = [
     lon: -125.745,
     exposure: 1.0,
     station: '46206',
+    province: 'BC',
   },
   {
     id: 'wickaninnish',
@@ -334,6 +338,7 @@ const spots = [
     lon: -125.742,
     exposure: 0.95,
     station: '46206',
+    province: 'BC',
   },
   {
     id: 'jordan-river',
@@ -342,6 +347,7 @@ const spots = [
     lon: -124.036,
     exposure: 1.05,
     station: '46146',
+    province: 'BC',
   },
   {
     id: 'sombrio',
@@ -350,6 +356,7 @@ const spots = [
     lon: -124.345,
     exposure: 1.05,
     station: '46146',
+    province: 'BC',
   },
   {
     id: 'botanical',
@@ -358,6 +365,7 @@ const spots = [
     lon: -124.419,
     exposure: 0.95,
     station: '46146',
+    province: 'BC',
   },
   {
     id: 'chesterman-north',
@@ -366,6 +374,7 @@ const spots = [
     lon: -125.905,
     exposure: 0.9,
     station: '46206',
+    province: 'BC',
   },
   {
     id: 'haida-gwaii',
@@ -374,6 +383,61 @@ const spots = [
     lon: -131.926,
     exposure: 1.1,
     station: '46204',
+    province: 'BC',
+  },
+  {
+    id: 'cow-bay-osbourne',
+    name: 'Cow Bay • Osbourne',
+    lat: 44.63,
+    lon: -63.45,
+    exposure: 1.0,
+    station: '44258',
+    province: 'NS',
+  },
+  {
+    id: 'cow-bay-minutes',
+    name: 'Cow Bay • Minutes',
+    lat: 44.62,
+    lon: -63.44,
+    exposure: 1.05,
+    station: '44258',
+    province: 'NS',
+  },
+  {
+    id: 'lawrencetown-beach',
+    name: 'Lawrencetown Beach',
+    lat: 44.648,
+    lon: -63.343,
+    exposure: 1.0,
+    station: '44258',
+    province: 'NS',
+  },
+  {
+    id: 'lawrencetown-point',
+    name: 'Lawrencetown Point',
+    lat: 44.655,
+    lon: -63.333,
+    exposure: 1.05,
+    station: '44258',
+    province: 'NS',
+  },
+  {
+    id: 'lawrencetown-left',
+    name: 'Left Point (Lawrencetown)',
+    lat: 44.656,
+    lon: -63.335,
+    exposure: 1.05,
+    station: '44258',
+    province: 'NS',
+  },
+  {
+    id: 'lawrencetown-right',
+    name: 'Right Point (Lawrencetown)',
+    lat: 44.653,
+    lon: -63.33,
+    exposure: 1.05,
+    station: '44258',
+    province: 'NS',
   },
   {
     id: 'lawrencetown',
@@ -382,6 +446,7 @@ const spots = [
     lon: -63.304,
     exposure: 1.05,
     station: '44258',
+    province: 'NS',
   },
   {
     id: 'martinique',
@@ -390,6 +455,7 @@ const spots = [
     lon: -62.592,
     exposure: 1.05,
     station: '44137',
+    province: 'NS',
   },
   {
     id: 'sable-island',
@@ -398,6 +464,7 @@ const spots = [
     lon: -59.91,
     exposure: 1.1,
     station: '44137',
+    province: 'NS',
   },
   {
     id: 'sauble',
@@ -406,6 +473,7 @@ const spots = [
     lon: -81.27,
     exposure: 1.0,
     station: '45137',
+    province: 'ON',
   },
   {
     id: 'grand-bend',
@@ -414,6 +482,7 @@ const spots = [
     lon: -81.757,
     exposure: 1.0,
     station: '45132',
+    province: 'ON',
   },
   {
     id: 'hamilton',
@@ -422,8 +491,14 @@ const spots = [
     lon: -79.863,
     exposure: 0.9,
     station: '45139',
+    province: 'ON',
   },
 ]
+
+const getActiveSpots = () => {
+  if (activeProvince === 'NS') return allSpots.filter((s) => s.province === 'NS')
+  return allSpots
+}
 
 const buoys = [
   { station: '46206', name: 'La Perouse Bank', lat: 48.84, lon: -126.0 },
@@ -436,7 +511,30 @@ const buoys = [
   { station: '45137', name: 'Georgian Bay', lat: 45.54, lon: -81.02 },
 ]
 
-const getSelectedSpot = () => spots.find((s) => s.id === selectedSpotId) ?? spots[0]
+const getSelectedSpot = () => {
+  const list = getActiveSpots()
+  return list.find((s) => s.id === selectedSpotId) ?? list[0]
+}
+
+const syncSpotSelection = () => {
+  const list = getActiveSpots()
+  if (!list.some((s) => s.id === selectedSpotId)) {
+    selectedSpotId = list[0]?.id ?? selectedSpotId
+  }
+}
+
+const renderSpotOptions = () => {
+  syncSpotSelection()
+  const list = getActiveSpots()
+  spotEl.innerHTML = ''
+  list.forEach((s) => {
+    const opt = document.createElement('option')
+    opt.value = s.id
+    opt.textContent = s.name
+    spotEl.appendChild(opt)
+  })
+  spotEl.value = selectedSpotId
+}
 
 const getActiveStation = () => {
   if (selectedStationOverride) return selectedStationOverride
@@ -550,6 +648,35 @@ let userMarker = null
 let geoWatchId = null
 let buoyMarkers = []
 
+const clearSpotMarkers = () => {
+  if (!map) return
+  spotMarkers.forEach((m) => {
+    try {
+      map.removeLayer(m)
+    } catch {
+      // ignore
+    }
+  })
+  spotMarkers = []
+}
+
+const renderSpotMarkers = () => {
+  ensureMap()
+  if (!map || !window.L) return
+  clearSpotMarkers()
+  spotMarkers = getActiveSpots().map((s) => {
+    const m = window.L.marker([s.lat, s.lon]).addTo(map)
+    m.bindPopup(`<strong>${s.name}</strong><br/>Click to select.`)
+    m.on('click', () => {
+      selectedSpotId = s.id
+      spotEl.value = s.id
+      selectedStationOverride = null
+      loadForecast()
+    })
+    return m
+  })
+}
+
 const toRad = (d) => (d * Math.PI) / 180
 
 const distanceKm = (a, b) => {
@@ -610,13 +737,14 @@ const handleGeoSuccess = (pos) => {
   setGeoStatus('Location found.')
   setUserMarker(user)
   nearbyEl.hidden = false
+  updateProvinceModeFromLatLon(user)
   renderNearby(user)
   if (map) map.setView([user.lat, user.lon], Math.max(map.getZoom(), 9))
 }
 
 const renderNearby = (user) => {
   const MAX_NEARBY_KM = 300
-  const ranked = spots
+  const ranked = getActiveSpots()
     .filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lon))
     .map((s) => ({
       spot: s,
@@ -698,18 +826,29 @@ const ensureMap = () => {
     return { station: b.station, marker: m }
   })
 
-  spotMarkers = spots
-    .map((s) => {
-      const m = window.L.marker([s.lat, s.lon]).addTo(map)
-      m.bindPopup(`<strong>${s.name}</strong><br/>Click to select.`)
-      m.on('click', () => {
-        selectedSpotId = s.id
-        spotEl.value = s.id
-        selectedStationOverride = null
-        loadForecast()
-      })
-      return m
-    })
+  renderSpotMarkers()
+}
+
+const updateProvinceModeFromLatLon = async (user) => {
+  try {
+    const url = `/api/reverse?lat=${encodeURIComponent(user.lat)}&lon=${encodeURIComponent(user.lon)}`
+    const res = await fetch(url, { headers: { accept: 'application/json' } })
+    const text = await res.text()
+    if (!res.ok) throw new Error(`Reverse error: ${res.status} ${text}`)
+    const json = JSON.parse(text)
+    if (!json?.ok) return
+
+    const isNS = json?.countryCode === 'CA' && json?.state === 'Nova Scotia'
+    const nextProvince = isNS ? 'NS' : null
+    if (activeProvince === nextProvince) return
+
+    activeProvince = nextProvince
+    renderSpotOptions()
+    renderSpotMarkers()
+    loadForecast()
+  } catch (err) {
+    console.warn('Reverse geocode failed:', err)
+  }
 }
 
 const loadForecast = async () => {
@@ -773,14 +912,7 @@ const loadForecast = async () => {
 
 render()
 
-spots.forEach((s) => {
-  const opt = document.createElement('option')
-  opt.value = s.id
-  opt.textContent = s.name
-  spotEl.appendChild(opt)
-})
-
-spotEl.value = selectedSpotId
+renderSpotOptions()
 spotEl.addEventListener('change', () => {
   selectedSpotId = spotEl.value
   selectedStationOverride = null
