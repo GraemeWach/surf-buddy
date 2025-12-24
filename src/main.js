@@ -200,10 +200,10 @@ app.innerHTML = `
                 <label class="field">
                   <span class="label">Height</span>
                   <div class="control">
-                    <input id="height" inputmode="decimal" autocomplete="off" placeholder="e.g. 180" />
+                    <input id="height" inputmode="decimal" autocomplete="off" placeholder="e.g. 70" />
                     <select id="height-unit" aria-label="Height unit">
-                      <option value="cm" selected>cm</option>
-                      <option value="in">in</option>
+                      <option value="in" selected>in</option>
+                      <option value="cm">cm</option>
                     </select>
                   </div>
                 </label>
@@ -211,10 +211,10 @@ app.innerHTML = `
                 <label class="field">
                   <span class="label">Weight</span>
                   <div class="control">
-                    <input id="weight" inputmode="decimal" autocomplete="off" placeholder="e.g. 80" />
+                    <input id="weight" inputmode="decimal" autocomplete="off" placeholder="e.g. 175" />
                     <select id="weight-unit" aria-label="Weight unit">
-                      <option value="kg" selected>kg</option>
-                      <option value="lb">lb</option>
+                      <option value="lb" selected>lb</option>
+                      <option value="kg">kg</option>
                     </select>
                   </div>
                 </label>
@@ -316,6 +316,10 @@ const geoBtnEl = document.getElementById('geo')
 const geoStatusEl = document.getElementById('geo-status')
 const nearbyEl = document.getElementById('nearby')
 const nearbyListEl = document.getElementById('nearby-list')
+
+// Enforce default unit preferences on load.
+heightUnitEl.value = 'in'
+weightUnitEl.value = 'lb'
 
 let latestConditions = null
 let selectedSpotId = 'cox-bay'
@@ -453,8 +457,8 @@ resetEl.addEventListener('click', () => {
   abilityEl.value = 'intermediate'
   heightEl.value = ''
   weightEl.value = ''
-  heightUnitEl.value = 'cm'
-  weightUnitEl.value = 'kg'
+  heightUnitEl.value = 'in'
+  weightUnitEl.value = 'lb'
   render()
   heightEl.focus()
 })
@@ -542,6 +546,7 @@ const handleGeoSuccess = (pos) => {
 
   setGeoStatus('Location found.')
   setUserMarker(user)
+  nearbyEl.hidden = false
   renderNearby(user)
   if (map) map.setView([user.lat, user.lon], Math.max(map.getZoom(), 9))
 }
@@ -713,9 +718,32 @@ spotEl.addEventListener('change', () => {
 ensureMap()
 loadForecast()
 
+const initGeoIfGranted = async () => {
+  if (!navigator.geolocation) return
+
+  if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+    return
+  }
+
+  const state = await checkGeoPermission()
+  if (state !== 'granted') return
+
+  setGeoStatus('Locating…')
+  navigator.geolocation.getCurrentPosition(
+    handleGeoSuccess,
+    (err) => {
+      console.warn('Init geolocation error:', err)
+      setGeoStatus(`${geoErrorText(err)}${geoErrorDetail(err)}`)
+    },
+    { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 },
+  )
+}
+
+initGeoIfGranted()
+
 geoBtnEl.addEventListener('click', () => {
   nearbyListEl.innerHTML = ''
-  nearbyEl.hidden = true
+  nearbyEl.hidden = false
 
   if (!navigator.geolocation) {
     setGeoStatus('Geolocation is not supported in this browser.')
