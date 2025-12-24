@@ -161,6 +161,14 @@ app.innerHTML = `
                 <label class="spot-label" for="spot">Spot</label>
                 <select id="spot" aria-label="Spot"></select>
               </div>
+              <div class="geo-row">
+                <button class="btn btn-ghost" type="button" id="geo">Use my location</button>
+                <div class="geo-status" id="geo-status" role="status" aria-live="polite"></div>
+              </div>
+              <div class="nearby" id="nearby" hidden>
+                <div class="nearby-title">Nearby spots</div>
+                <div class="nearby-list" id="nearby-list"></div>
+              </div>
               <div id="forecast" class="forecast" aria-live="polite">
                 <div class="forecast-title">Current conditions</div>
                 <div class="forecast-body" id="forecast-body">Loading buoy data…</div>
@@ -304,6 +312,10 @@ const forecastBodyEl = document.getElementById('forecast-body')
 const warningEl = document.getElementById('warning')
 const warningBodyEl = document.getElementById('warning-body')
 const spotEl = document.getElementById('spot')
+const geoBtnEl = document.getElementById('geo')
+const geoStatusEl = document.getElementById('geo-status')
+const nearbyEl = document.getElementById('nearby')
+const nearbyListEl = document.getElementById('nearby-list')
 
 let latestConditions = null
 let selectedSpotId = 'cox-bay'
@@ -445,6 +457,72 @@ const fmtCond = (conditions) => {
 let buoyMarker = null
 let map = null
 let spotMarkers = []
+let userMarker = null
+
+const toRad = (d) => (d * Math.PI) / 180
+
+const distanceKm = (a, b) => {
+  const R = 6371
+  const dLat = toRad(b.lat - a.lat)
+  const dLon = toRad(b.lon - a.lon)
+  const lat1 = toRad(a.lat)
+  const lat2 = toRad(b.lat)
+
+  const sin1 = Math.sin(dLat / 2)
+  const sin2 = Math.sin(dLon / 2)
+  const h = sin1 * sin1 + Math.cos(lat1) * Math.cos(lat2) * sin2 * sin2
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)))
+}
+
+const setGeoStatus = (text) => {
+  geoStatusEl.textContent = text
+}
+
+const renderNearby = (user) => {
+  const ranked = spots
+    .filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lon))
+    .map((s) => ({
+      spot: s,
+      km: distanceKm(user, { lat: s.lat, lon: s.lon }),
+    }))
+    .sort((a, b) => a.km - b.km)
+    .slice(0, 5)
+
+  nearbyListEl.innerHTML = ''
+  ranked.forEach(({ spot, km }) => {
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = 'nearby-item'
+    btn.textContent = `${spot.name} • ${km.toFixed(0)} km`
+    btn.addEventListener('click', () => {
+      selectedSpotId = spot.id
+      spotEl.value = spot.id
+      loadForecast()
+      if (map) map.setView([spot.lat, spot.lon], Math.max(map.getZoom(), 10))
+    })
+    nearbyListEl.appendChild(btn)
+  })
+
+  nearbyEl.hidden = ranked.length === 0
+}
+
+const setUserMarker = (user) => {
+  ensureMap()
+  if (!map || !window.L) return
+  const pos = [user.lat, user.lon]
+  if (!userMarker) {
+    userMarker = window.L.circleMarker(pos, {
+      radius: 7,
+      weight: 2,
+      color: '#8c2121',
+      fillColor: '#8c2121',
+      fillOpacity: 0.18,
+    }).addTo(map)
+    userMarker.bindPopup('<strong>You</strong>')
+  } else {
+    userMarker.setLatLng(pos)
+  }
+}
 
 const ensureMap = () => {
   if (map || typeof window === 'undefined' || !window.L) return
@@ -551,3 +629,37 @@ spotEl.addEventListener('change', () => {
 
 ensureMap()
 loadForecast()
+
+geoBtnEl.addEventListener('click', () => {
+  nearbyEl.hidden = true
+
+  if (!navigator.geolocation) {
+    setGeoStatus('Geolocation is not supported in this browser.')
+    return
+  }
+
+  if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+    setGeoStatus('Geolocation requires HTTPS. Use the live site or localhost.')
+    return
+  }
+
+  setGeoStatus('Requesting location…')
+
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const user = {
+        lat: pos.coords.latitude,
+        lon: pos.coords.longitude,
+      }
+
+      setGeoStatus('Location found.')
+      setUserMarker(user)
+      renderNearby(user)
+      if (map) map.setView([user.lat, user.lon], Math.max(map.getZoom(), 9))
+    },
+    () => {
+      setGeoStatus('Location permission denied or unavailable.')
+    },
+    { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 },
+  )
+})
