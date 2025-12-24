@@ -487,6 +487,25 @@ const geoErrorText = (err) => {
   return 'Unable to get location.'
 }
 
+const geoErrorDetail = (err) => {
+  const code = err?.code
+  const msg = err?.message
+  const parts = []
+  if (Number.isFinite(code)) parts.push(`code ${code}`)
+  if (msg) parts.push(msg)
+  return parts.length ? ` (${parts.join(': ')})` : ''
+}
+
+const checkGeoPermission = async () => {
+  try {
+    if (!navigator.permissions?.query) return null
+    const res = await navigator.permissions.query({ name: 'geolocation' })
+    return res?.state ?? null
+  } catch {
+    return null
+  }
+}
+
 const handleGeoSuccess = (pos) => {
   const user = {
     lat: pos.coords.latitude,
@@ -676,16 +695,25 @@ geoBtnEl.addEventListener('click', () => {
 
   setGeoStatus('Requesting location…')
 
+  checkGeoPermission().then((state) => {
+    if (!state) return
+    if (state === 'denied') setGeoStatus('Location permission denied (browser setting).')
+    else if (state === 'prompt') setGeoStatus('Location permission not decided yet — waiting for prompt…')
+    else if (state === 'granted') setGeoStatus('Location permission granted — locating…')
+  })
+
   const tryHighAccuracy = () => {
     setGeoStatus('Trying high accuracy…')
     navigator.geolocation.getCurrentPosition(
       handleGeoSuccess,
       (err) => {
-        setGeoStatus(`${geoErrorText(err)} Trying live updates…`)
+        console.warn('Geolocation high accuracy error:', err)
+        setGeoStatus(`${geoErrorText(err)}${geoErrorDetail(err)} Trying live updates…`)
         geoWatchId = navigator.geolocation.watchPosition(
           handleGeoSuccess,
           (watchErr) => {
-            setGeoStatus(geoErrorText(watchErr))
+            console.warn('Geolocation watchPosition error:', watchErr)
+            setGeoStatus(`${geoErrorText(watchErr)}${geoErrorDetail(watchErr)}`)
           },
           { enableHighAccuracy: false, timeout: 30000, maximumAge: 0 },
         )
@@ -697,7 +725,8 @@ geoBtnEl.addEventListener('click', () => {
   navigator.geolocation.getCurrentPosition(
     handleGeoSuccess,
     (err) => {
-      setGeoStatus(`${geoErrorText(err)} Retrying…`)
+      console.warn('Geolocation coarse error:', err)
+      setGeoStatus(`${geoErrorText(err)}${geoErrorDetail(err)} Retrying…`)
       tryHighAccuracy()
     },
     { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 },
