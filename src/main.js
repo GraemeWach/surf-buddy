@@ -2,20 +2,67 @@ import './style.css'
 
 const app = document.querySelector('#app')
 
+const clamp = (n, min, max) => Math.min(max, Math.max(min, n))
+
+const kgFrom = (value, unit) => {
+  if (!Number.isFinite(value)) return NaN
+  if (unit === 'kg') return value
+  if (unit === 'lb') return value * 0.45359237
+  return NaN
+}
+
+const cmFrom = (value, unit) => {
+  if (!Number.isFinite(value)) return NaN
+  if (unit === 'cm') return value
+  if (unit === 'in') return value * 2.54
+  return NaN
+}
+
+const fmtFtIn = (cm) => {
+  const totalIn = cm / 2.54
+  const ft = Math.floor(totalIn / 12)
+  const inch = Math.round(totalIn - ft * 12)
+  if (!Number.isFinite(ft) || !Number.isFinite(inch)) return ''
+  if (inch === 12) return `${ft + 1}'0"`
+  return `${ft}'${inch}"`
+}
+
+const recommend = ({ heightCm, weightKg }) => {
+  const h = clamp(heightCm, 120, 220)
+  const w = clamp(weightKg, 35, 150)
+
+  const lengthCmMin = h + 10
+  const lengthCmMax = h + 25
+
+  const volumeMin = w * 0.55
+  const volumeMax = w * 0.7
+
+  const volumeShortMin = w * 0.4
+  const volumeShortMax = w * 0.52
+
+  return {
+    lengthCmMin,
+    lengthCmMax,
+    lengthHumanMin: fmtFtIn(lengthCmMin),
+    lengthHumanMax: fmtFtIn(lengthCmMax),
+    volumeMin: Math.round(volumeMin),
+    volumeMax: Math.round(volumeMax),
+    volumeShortMin: Math.round(volumeShortMin),
+    volumeShortMax: Math.round(volumeShortMax),
+  }
+}
+
 app.innerHTML = `
   <div class="page">
     <header class="site-header">
       <div class="container header-inner">
         <a class="brand" href="#top" aria-label="Surf Buddy home">
-          <span class="brand-mark" aria-hidden="true"></span>
           <span class="brand-name">Surf Buddy</span>
         </a>
         <nav class="nav" aria-label="Primary">
-          <a class="nav-link" href="#features">Features</a>
-          <a class="nav-link" href="#about">About</a>
-          <a class="nav-link" href="#contact">Contact</a>
+          <a class="nav-link" href="#finder">Board Finder</a>
+          <a class="nav-link" href="#notes">Notes</a>
         </nav>
-        <a class="btn btn-primary" href="#contact">Get Updates</a>
       </div>
     </header>
 
@@ -23,95 +70,93 @@ app.innerHTML = `
       <section class="hero">
         <div class="container hero-inner">
           <div class="hero-copy">
-            <h1>Plan better surf sessions.</h1>
+            <div class="kicker">An editorial board-size guide</div>
+            <h1>Find your board length and volume.</h1>
             <p class="lead">
-              A simple, fast website for checking conditions, tracking spots, and sharing sessions.
-            </p>
-            <div class="hero-actions">
-              <a class="btn btn-primary" href="#features">See features</a>
-              <a class="btn btn-ghost" href="#contact">Join the waitlist</a>
-            </div>
-            <div class="meta">
-              <div class="meta-item">
-                <div class="meta-label">Status</div>
-                <div class="meta-value">Live on Cloudflare Pages</div>
-              </div>
-              <div class="meta-item">
-                <div class="meta-label">Next</div>
-                <div class="meta-value">Add your real content</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="hero-card" role="presentation">
-            <div class="hero-card-inner">
-              <div class="hero-card-title">Today’s checklist</div>
-              <ul class="checklist">
-                <li>Pick a spot</li>
-                <li>Check swell + wind</li>
-                <li>Note tide window</li>
-                <li>Go surf</li>
-              </ul>
-              <div class="hero-card-foot">
-                <span class="pill">Fast</span>
-                <span class="pill">Mobile friendly</span>
-                <span class="pill">Easy to change</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="features" class="section">
-        <div class="container">
-          <h2>Features</h2>
-          <div class="grid">
-            <article class="card">
-              <h3>Clean homepage</h3>
-              <p>Replace this text with your real message, photos, and links.</p>
-            </article>
-            <article class="card">
-              <h3>Easy deploys</h3>
-              <p>Every time you push to GitHub, Cloudflare updates the live site.</p>
-            </article>
-            <article class="card">
-              <h3>Next: data</h3>
-              <p>We can add a forecast API, saved spots, and a simple dashboard.</p>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <section id="about" class="section section-muted">
-        <div class="container split">
-          <div>
-            <h2>About</h2>
-            <p>
-              This is the starting point. We’ll swap the placeholder copy for your real story,
-              add pages/sections, and then iterate.
+              Enter your height and weight. We’ll recommend an all-around range (midlength / funboard)
+              plus a lower-volume shortboard range.
             </p>
           </div>
-          <div class="card">
-            <h3>Suggested next sections</h3>
-            <ul class="bullets">
-              <li>Spots (your favorites)</li>
-              <li>Forecast (pull from an API)</li>
-              <li>Contact / newsletter</li>
-            </ul>
+        </div>
+      </section>
+
+      <section id="finder" class="section">
+        <div class="container">
+          <div class="panel">
+            <div class="panel-head">
+              <h2>Board Finder</h2>
+              <p class="sublead">A starting point. Your ability, waves, and goals still matter.</p>
+            </div>
+
+            <form id="board-form" class="form" novalidate>
+              <div class="fields">
+                <label class="field">
+                  <span class="label">Height</span>
+                  <div class="control">
+                    <input id="height" inputmode="decimal" autocomplete="off" placeholder="e.g. 180" />
+                    <select id="height-unit" aria-label="Height unit">
+                      <option value="cm" selected>cm</option>
+                      <option value="in">in</option>
+                    </select>
+                  </div>
+                </label>
+
+                <label class="field">
+                  <span class="label">Weight</span>
+                  <div class="control">
+                    <input id="weight" inputmode="decimal" autocomplete="off" placeholder="e.g. 80" />
+                    <select id="weight-unit" aria-label="Weight unit">
+                      <option value="kg" selected>kg</option>
+                      <option value="lb">lb</option>
+                    </select>
+                  </div>
+                </label>
+              </div>
+
+              <div class="actions">
+                <button class="btn btn-primary" type="submit">Recommend</button>
+                <button class="btn btn-ghost" type="button" id="reset">Reset</button>
+                <div class="hint" id="hint" role="status" aria-live="polite"></div>
+              </div>
+            </form>
+
+            <div id="results" class="results" hidden>
+              <div class="result">
+                <div class="result-title">All-around board</div>
+                <div class="result-row">
+                  <div class="result-k">Length</div>
+                  <div class="result-v" id="allaround-length"></div>
+                </div>
+                <div class="result-row">
+                  <div class="result-k">Volume</div>
+                  <div class="result-v" id="allaround-volume"></div>
+                </div>
+              </div>
+
+              <div class="result">
+                <div class="result-title">Shortboard (lower volume)</div>
+                <div class="result-row">
+                  <div class="result-k">Volume</div>
+                  <div class="result-v" id="short-volume"></div>
+                </div>
+                <div class="result-foot">If you’re not sure, start with the all-around range.</div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      <section id="contact" class="section">
-        <div class="container">
-          <h2>Contact</h2>
-          <p class="sublead">Add a real form later. For now, this button opens an email draft.</p>
-          <div class="contact-row">
-            <a class="btn btn-primary" href="mailto:graeme.wach@gmail.com?subject=Surf%20Buddy%20Updates">
-              Email me
-            </a>
-            <a class="btn btn-ghost" href="#top">Back to top</a>
-          </div>
+      <section id="notes" class="section section-muted">
+        <div class="container prose">
+          <h2>Notes</h2>
+          <p>
+            These ranges are conservative and meant for typical, average-fit surfers. Wave energy, wetsuit weight,
+            skill, and preferred style can shift the recommendation.
+          </p>
+          <p>
+            Next we can add: ability level, age, fitness, local spot types, and board categories (fish, step-up,
+            longboard) to make it more accurate.
+          </p>
         </div>
       </section>
     </main>
@@ -138,3 +183,75 @@ document.querySelectorAll('a[href^="#"]').forEach((a) => {
     el.scrollIntoView({ behavior: 'smooth', block: 'start' })
   })
 })
+
+const heightEl = document.getElementById('height')
+const weightEl = document.getElementById('weight')
+const heightUnitEl = document.getElementById('height-unit')
+const weightUnitEl = document.getElementById('weight-unit')
+const hintEl = document.getElementById('hint')
+const resultsEl = document.getElementById('results')
+const allaroundLengthEl = document.getElementById('allaround-length')
+const allaroundVolumeEl = document.getElementById('allaround-volume')
+const shortVolumeEl = document.getElementById('short-volume')
+const resetEl = document.getElementById('reset')
+
+const setHint = (text) => {
+  hintEl.textContent = text
+}
+
+const parseNumber = (raw) => {
+  if (typeof raw !== 'string') return NaN
+  const cleaned = raw.replace(/,/g, '.').trim()
+  const n = Number(cleaned)
+  return Number.isFinite(n) ? n : NaN
+}
+
+const render = () => {
+  const heightRaw = parseNumber(heightEl.value)
+  const weightRaw = parseNumber(weightEl.value)
+
+  const heightCm = cmFrom(heightRaw, heightUnitEl.value)
+  const weightKg = kgFrom(weightRaw, weightUnitEl.value)
+
+  if (!Number.isFinite(heightCm) || !Number.isFinite(weightKg)) {
+    resultsEl.hidden = true
+    setHint('Enter your height and weight to get a recommendation.')
+    return
+  }
+
+  if (heightCm < 120 || heightCm > 220 || weightKg < 35 || weightKg > 150) {
+    resultsEl.hidden = true
+    setHint('Those numbers look unusual—double-check your units.')
+    return
+  }
+
+  const rec = recommend({ heightCm, weightKg })
+
+  allaroundLengthEl.textContent = `${rec.lengthHumanMin} – ${rec.lengthHumanMax}`
+  allaroundVolumeEl.textContent = `${rec.volumeMin} – ${rec.volumeMax} L`
+  shortVolumeEl.textContent = `${rec.volumeShortMin} – ${rec.volumeShortMax} L`
+
+  resultsEl.hidden = false
+  setHint('')
+}
+
+document.getElementById('board-form').addEventListener('submit', (e) => {
+  e.preventDefault()
+  render()
+})
+
+;[heightEl, weightEl, heightUnitEl, weightUnitEl].forEach((el) => {
+  el.addEventListener('input', render)
+  el.addEventListener('change', render)
+})
+
+resetEl.addEventListener('click', () => {
+  heightEl.value = ''
+  weightEl.value = ''
+  heightUnitEl.value = 'cm'
+  weightUnitEl.value = 'kg'
+  render()
+  heightEl.focus()
+})
+
+render()
