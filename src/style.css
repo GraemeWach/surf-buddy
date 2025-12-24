@@ -401,6 +401,54 @@ p {
   font-weight: 650;
 }
 
+.cond-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.4rem 0 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.cond-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  border-top: 1px solid rgba(20, 20, 20, 0.08);
+  padding-top: 0.45rem;
+}
+
+.cond-item:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.cond-k {
+  color: var(--faint);
+  font-weight: 600;
+}
+
+.cond-v {
+  font-weight: 700;
+}
+
+.tide {
+  margin-top: 0.8rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid rgba(20, 20, 20, 0.12);
+}
+
+.tide-title {
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.tide-body {
+  margin-top: 0.35rem;
+  font-weight: 700;
+}
+
 .warning {
   margin-top: 0.9rem;
   padding: 0.9rem 1rem;
@@ -494,7 +542,7 @@ p {
 
 .map {
   width: 100%;
-  height: 280px;
+  height: 520px;
   border-radius: var(--radius);
   border: 1px solid var(--stroke);
   overflow: hidden;

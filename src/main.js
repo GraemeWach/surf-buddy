@@ -125,9 +125,6 @@ app.innerHTML = `
         <a class="brand" href="#top" aria-label="Surf Buddy home">
           <span class="brand-name">Surf Buddy</span>
         </a>
-        <nav class="nav" aria-label="Primary">
-          <a class="nav-link" href="#finder">Finder</a>
-        </nav>
       </div>
     </header>
 
@@ -136,9 +133,6 @@ app.innerHTML = `
         <div class="container hero-inner">
           <div class="hero-copy">
             <h1>Surf Buddy</h1>
-            <div class="hero-links">
-              <a class="btn btn-primary" href="#finder">Start</a>
-            </div>
           </div>
         </div>
       </section>
@@ -163,6 +157,10 @@ app.innerHTML = `
               <div id="forecast" class="forecast" aria-live="polite">
                 <div class="forecast-title">Current conditions</div>
                 <div class="forecast-body" id="forecast-body">Loading buoy data…</div>
+                <div class="tide" id="tide" hidden>
+                  <div class="tide-title">Tide</div>
+                  <div class="tide-body" id="tide-body"></div>
+                </div>
               </div>
               <div id="warning" class="warning" hidden>
                 <div class="warning-title">Extreme conditions</div>
@@ -286,6 +284,8 @@ const shortVolumeEl = document.getElementById('short-volume')
 const resetEl = document.getElementById('reset')
 
 const forecastBodyEl = document.getElementById('forecast-body')
+const tideEl = document.getElementById('tide')
+const tideBodyEl = document.getElementById('tide-body')
 const warningEl = document.getElementById('warning')
 const warningBodyEl = document.getElementById('warning-body')
 const spotEl = document.getElementById('spot')
@@ -299,6 +299,7 @@ heightUnitEl.value = 'in'
 weightUnitEl.value = 'lb'
 
 let latestConditions = null
+let latestMarine = null
 let selectedSpotId = 'cox-bay'
 let selectedStationOverride = null
 let activeProvince = null
@@ -454,6 +455,60 @@ const allSpots = [
     lat: 44.663,
     lon: -62.592,
     exposure: 1.05,
+    station: '44137',
+    province: 'NS',
+  },
+  {
+    id: 'clam-harbour',
+    name: 'Clam Harbour Beach (NS)',
+    lat: 44.84,
+    lon: -62.87,
+    exposure: 1.0,
+    station: '44137',
+    province: 'NS',
+  },
+  {
+    id: 'summerville',
+    name: 'Summerville (NS)',
+    lat: 43.85,
+    lon: -64.83,
+    exposure: 1.05,
+    station: '44137',
+    province: 'NS',
+  },
+  {
+    id: 'white-point',
+    name: 'White Point (NS)',
+    lat: 43.95,
+    lon: -64.68,
+    exposure: 1.05,
+    station: '44137',
+    province: 'NS',
+  },
+  {
+    id: 'cherry-hill',
+    name: 'Cherry Hill (NS)',
+    lat: 44.3,
+    lon: -64.28,
+    exposure: 1.0,
+    station: '44137',
+    province: 'NS',
+  },
+  {
+    id: 'hirtles',
+    name: 'Hirtles (NS)',
+    lat: 44.22,
+    lon: -64.31,
+    exposure: 1.0,
+    station: '44137',
+    province: 'NS',
+  },
+  {
+    id: 'western-head',
+    name: 'Western Head (NS)',
+    lat: 43.95,
+    lon: -64.59,
+    exposure: 1.0,
     station: '44137',
     province: 'NS',
   },
@@ -625,20 +680,141 @@ resetEl.addEventListener('click', () => {
 })
 
 const fmtCond = (conditions) => {
-  if (!conditions) return 'Buoy data unavailable.'
-  const station = conditions.stationName ? `${conditions.stationName} (${conditions.station})` : ''
-  const wave = Number.isFinite(conditions.waveFt)
-    ? `${conditions.waveFt.toFixed(1)} ft`
-    : '—'
-  const period = Number.isFinite(conditions.periodS) ? `${Math.round(conditions.periodS)}s` : '—'
+  if (!conditions) return null
+  const station = conditions.stationName ? `${conditions.stationName} (${conditions.station})` : '—'
+  const wave = Number.isFinite(conditions.waveFt) ? `${conditions.waveFt.toFixed(1)} ft` : '—'
+  const period = Number.isFinite(conditions.periodS) ? `${Math.round(conditions.periodS)} s` : '—'
   const wind = Number.isFinite(conditions.windKts) ? `${Math.round(conditions.windKts)} kts` : '—'
   const swellDir = Number.isFinite(conditions.swellDirDeg) ? `${Math.round(conditions.swellDirDeg)}°` : '—'
   const windDir = Number.isFinite(conditions.windDirDeg) ? `${Math.round(conditions.windDirDeg)}°` : '—'
-  const spotName = conditions.spotName ? ` • Spot ${conditions.spotName}` : ''
-  const exp = Number.isFinite(conditions.spotExposure)
-    ? ` (x${conditions.spotExposure.toFixed(2)} exposure)`
-    : ''
-  return `${station} • Wave ${wave} @ ${period} from ${swellDir} • Wind ${wind} ${windDir}${spotName}${exp}`
+
+  const parts = [
+    { k: 'Buoy', v: station },
+    { k: 'Wave', v: `${wave} @ ${period}` },
+    { k: 'Swell dir', v: swellDir },
+    { k: 'Wind', v: `${wind} @ ${windDir}` },
+  ]
+
+  if (conditions.spotName) parts.unshift({ k: 'Spot', v: conditions.spotName })
+  if (Number.isFinite(conditions.spotExposure)) {
+    parts.push({ k: 'Exposure', v: `x${conditions.spotExposure.toFixed(2)}` })
+  }
+
+  return parts
+}
+
+const fmtMarine = (marine) => {
+  if (!marine?.current) return []
+  const waveM = marine.current?.wave_height
+  const periodS = marine.current?.wave_period
+  const wWaveM = marine.current?.wind_wave_height
+  const wWavePeriodS = marine.current?.wind_wave_period
+  const wWaveDir = marine.current?.wind_wave_direction
+
+  const out = []
+  if (Number.isFinite(waveM)) out.push({ k: 'Model wave', v: `${ftFromM(waveM).toFixed(1)} ft` })
+  if (Number.isFinite(periodS)) out.push({ k: 'Model period', v: `${Math.round(periodS)} s` })
+  if (Number.isFinite(wWaveM)) out.push({ k: 'Wind wave', v: `${ftFromM(wWaveM).toFixed(1)} ft` })
+  if (Number.isFinite(wWavePeriodS)) out.push({ k: 'Wind wave period', v: `${Math.round(wWavePeriodS)} s` })
+  if (Number.isFinite(wWaveDir)) out.push({ k: 'Wind wave dir', v: `${Math.round(wWaveDir)}°` })
+  return out
+}
+
+const tideFromMarine = (marine) => {
+  const times = marine?.hourly?.time
+  const heights = marine?.hourly?.tide_height
+  if (!Array.isArray(times) || !Array.isArray(heights) || times.length !== heights.length) return null
+
+  const now = Date.now()
+  let idx = -1
+  let best = Infinity
+  for (let i = 0; i < times.length; i++) {
+    const t = Date.parse(times[i])
+    if (!Number.isFinite(t)) continue
+    const d = Math.abs(t - now)
+    if (d < best) {
+      best = d
+      idx = i
+    }
+  }
+  if (idx < 0) return null
+
+  const h = Number(heights[idx])
+  if (!Number.isFinite(h)) return null
+
+  const hPrev = idx > 0 ? Number(heights[idx - 1]) : NaN
+  const hNext = idx + 1 < heights.length ? Number(heights[idx + 1]) : NaN
+  const delta = Number.isFinite(hNext) ? hNext - h : Number.isFinite(hPrev) ? h - hPrev : 0
+  const trend = delta > 0.02 ? 'Rising' : delta < -0.02 ? 'Falling' : 'Slack'
+
+  const nextExtreme = (() => {
+    // Find the next local max/min after idx.
+    for (let i = Math.max(1, idx); i < heights.length - 1; i++) {
+      const a = Number(heights[i - 1])
+      const b = Number(heights[i])
+      const c = Number(heights[i + 1])
+      if (!Number.isFinite(a) || !Number.isFinite(b) || !Number.isFinite(c)) continue
+      const isHigh = b >= a && b >= c
+      const isLow = b <= a && b <= c
+      if (!isHigh && !isLow) continue
+
+      const t = times[i]
+      if (typeof t !== 'string') continue
+      const when = new Date(t)
+      if (!Number.isFinite(when.getTime())) continue
+
+      return {
+        type: isHigh ? 'High' : 'Low',
+        time: when,
+        heightM: b,
+      }
+    }
+    return null
+  })()
+
+  return { heightM: h, trend, nextExtreme }
+}
+
+const renderConditionsList = () => {
+  const buoyParts = fmtCond(latestConditions)
+  const marineParts = fmtMarine(latestMarine)
+  const parts = [...(buoyParts ?? []), ...marineParts]
+
+  if (parts.length === 0) {
+    forecastBodyEl.textContent = 'Data unavailable.'
+    return
+  }
+
+  const ul = document.createElement('ul')
+  ul.className = 'cond-list'
+  parts.forEach((p) => {
+    const li = document.createElement('li')
+    li.className = 'cond-item'
+    const k = document.createElement('span')
+    k.className = 'cond-k'
+    k.textContent = p.k
+    const v = document.createElement('span')
+    v.className = 'cond-v'
+    v.textContent = p.v
+    li.appendChild(k)
+    li.appendChild(v)
+    ul.appendChild(li)
+  })
+
+  forecastBodyEl.innerHTML = ''
+  forecastBodyEl.appendChild(ul)
+
+  const tide = tideFromMarine(latestMarine)
+  if (tide) {
+    const next = tide.nextExtreme
+    const nextTxt = next
+      ? ` • Next ${next.type} ${next.time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+      : ''
+    tideBodyEl.textContent = `${tide.heightM.toFixed(2)} m • ${tide.trend}${nextTxt}`
+    tideEl.hidden = false
+  } else {
+    tideEl.hidden = true
+  }
 }
 
 let buoyMarker = null
@@ -805,10 +981,37 @@ const ensureMap = () => {
     attributionControl: true,
   }).setView([49.1, -125.9], 9)
 
-  window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 18,
+  const osm = window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
     attribution: '&copy; OpenStreetMap contributors',
-  }).addTo(map)
+  })
+
+  const esri = window.L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    {
+      maxZoom: 19,
+      attribution:
+        'Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+    },
+  )
+
+  const gebco = window.L.tileLayer.wms('https://wms.gebco.net/mapserv?', {
+    layers: 'GEBCO_LATEST',
+    format: 'image/png',
+    transparent: true,
+    attribution: 'Imagery reproduced from the GEBCO_2024 Grid (GEBCO)',
+  })
+
+  osm.addTo(map)
+  gebco.addTo(map)
+
+  window.L.control
+    .layers(
+      { Street: osm, Satellite: esri },
+      { Bathymetry: gebco },
+      { collapsed: true },
+    )
+    .addTo(map)
 
   buoyMarkers = buoys.map((b) => {
     const m = window.L.circleMarker([b.lat, b.lon], {
@@ -897,14 +1100,28 @@ const loadForecast = async () => {
       spotExposure: spot.exposure,
     }
 
-    forecastBodyEl.textContent = fmtCond(latestConditions)
+    // Fetch model marine + tide data (no key).
+    try {
+      const marineUrl = `/api/marine?lat=${encodeURIComponent(spot.lat)}&lon=${encodeURIComponent(spot.lon)}`
+      const marineRes = await fetch(marineUrl, { headers: { accept: 'application/json' } })
+      const marineText = await marineRes.text()
+      if (!marineRes.ok) throw new Error(`Marine error: ${marineRes.status} ${marineText}`)
+      const marineJson = JSON.parse(marineText)
+      latestMarine = marineJson?.ok ? marineJson : null
+    } catch (err) {
+      latestMarine = null
+      console.warn('Marine fetch failed:', err)
+    }
+
+    renderConditionsList()
 
     ensureMap()
     highlightSelectedBuoy()
   } catch (err) {
     latestConditions = null
-    forecastBodyEl.textContent =
-      err instanceof Error && err.message ? err.message : 'Buoy data unavailable.'
+    latestMarine = null
+    tideEl.hidden = true
+    forecastBodyEl.textContent = err instanceof Error && err.message ? err.message : 'Data unavailable.'
   } finally {
     render()
   }
