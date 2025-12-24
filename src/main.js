@@ -34,9 +34,14 @@ const recommend = ({ heightCm, weightKg, ability, conditions }) => {
   const h = clamp(heightCm, 120, 220)
   const w = clamp(weightKg, 35, 150)
 
-  const waveFt = conditions?.waveFt
+  const waveFtRaw = conditions?.waveFt
   const periodS = conditions?.periodS
   const windKts = conditions?.windKts
+
+  const spotExposure = Number.isFinite(conditions?.spotExposure)
+    ? clamp(conditions.spotExposure, 0.6, 1.25)
+    : 1
+  const waveFt = Number.isFinite(waveFtRaw) ? waveFtRaw * spotExposure : waveFtRaw
 
   const hasForecast =
     Number.isFinite(waveFt) && Number.isFinite(periodS) && Number.isFinite(windKts)
@@ -152,6 +157,10 @@ app.innerHTML = `
             <div class="panel-head">
               <h2>Board Finder</h2>
               <p class="sublead">Live conditions are pulled from a nearby NOAA buoy. Use as guidance, not a guarantee.</p>
+              <div class="spot-row">
+                <label class="spot-label" for="spot">Spot</label>
+                <select id="spot" aria-label="Spot"></select>
+              </div>
               <div id="forecast" class="forecast" aria-live="polite">
                 <div class="forecast-title">Current conditions</div>
                 <div class="forecast-body" id="forecast-body">Loading buoy data…</div>
@@ -160,6 +169,11 @@ app.innerHTML = `
                 <div class="warning-title">Extreme conditions</div>
                 <div class="warning-body" id="warning-body"></div>
               </div>
+            </div>
+
+            <div class="map-wrap" aria-label="Map">
+              <div id="map" class="map" role="application" aria-label="Map of buoy and surf spots"></div>
+              <div class="map-foot">Click a spot marker to update the recommendation.</div>
             </div>
 
             <form id="board-form" class="form" novalidate>
@@ -289,8 +303,55 @@ const resetEl = document.getElementById('reset')
 const forecastBodyEl = document.getElementById('forecast-body')
 const warningEl = document.getElementById('warning')
 const warningBodyEl = document.getElementById('warning-body')
+const spotEl = document.getElementById('spot')
 
 let latestConditions = null
+let selectedSpotId = 'cox-bay'
+
+const spots = [
+  {
+    id: 'cox-bay',
+    name: 'Cox Bay',
+    lat: 49.085,
+    lon: -125.883,
+    exposure: 1.05,
+    station: '46206',
+  },
+  {
+    id: 'chesterman',
+    name: 'Chesterman Beach',
+    lat: 49.144,
+    lon: -125.904,
+    exposure: 0.9,
+    station: '46206',
+  },
+  {
+    id: 'long-beach',
+    name: 'Long Beach',
+    lat: 49.055,
+    lon: -125.745,
+    exposure: 1.0,
+    station: '46206',
+  },
+  {
+    id: 'wickaninnish',
+    name: 'Wickaninnish',
+    lat: 49.052,
+    lon: -125.742,
+    exposure: 0.95,
+    station: '46206',
+  },
+  {
+    id: 'north-coast',
+    name: 'North Coast (farther)',
+    lat: 51.38,
+    lon: -128.77,
+    exposure: 1.0,
+    station: '46204',
+  },
+]
+
+const getSelectedSpot = () => spots.find((s) => s.id === selectedSpotId) ?? spots[0]
 
 const setHint = (text) => {
   hintEl.textContent = text
@@ -366,24 +427,66 @@ resetEl.addEventListener('click', () => {
 
 const fmtCond = (conditions) => {
   if (!conditions) return 'Buoy data unavailable.'
+  const station = conditions.stationName ? `${conditions.stationName} (${conditions.station})` : ''
   const wave = Number.isFinite(conditions.waveFt)
     ? `${conditions.waveFt.toFixed(1)} ft`
     : '—'
   const period = Number.isFinite(conditions.periodS) ? `${Math.round(conditions.periodS)}s` : '—'
   const wind = Number.isFinite(conditions.windKts) ? `${Math.round(conditions.windKts)} kts` : '—'
-  return `WVHT ${wave} @ ${period} • Wind ${wind}`
+  const swellDir = Number.isFinite(conditions.swellDirDeg) ? `${Math.round(conditions.swellDirDeg)}°` : '—'
+  const windDir = Number.isFinite(conditions.windDirDeg) ? `${Math.round(conditions.windDirDeg)}°` : '—'
+  const spotName = conditions.spotName ? ` • Spot ${conditions.spotName}` : ''
+  const exp = Number.isFinite(conditions.spotExposure)
+    ? ` (x${conditions.spotExposure.toFixed(2)} exposure)`
+    : ''
+  return `${station} • Wave ${wave} @ ${period} from ${swellDir} • Wind ${wind} ${windDir}${spotName}${exp}`
+}
+
+let buoyMarker = null
+let map = null
+let spotMarkers = []
+
+const ensureMap = () => {
+  if (map || typeof window === 'undefined' || !window.L) return
+
+  map = window.L.map('map', {
+    zoomControl: true,
+    attributionControl: true,
+  }).setView([49.1, -125.9], 9)
+
+  window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 18,
+    attribution: '&copy; OpenStreetMap contributors',
+  }).addTo(map)
+
+  spotMarkers = spots
+    .filter((s) => s.id !== 'north-coast')
+    .map((s) => {
+      const m = window.L.marker([s.lat, s.lon]).addTo(map)
+      m.bindPopup(`<strong>${s.name}</strong><br/>Click to select.`)
+      m.on('click', () => {
+        selectedSpotId = s.id
+        spotEl.value = s.id
+        loadForecast()
+      })
+      return m
+    })
 }
 
 const loadForecast = async () => {
   try {
-    const res = await fetch('/api/forecast', { headers: { accept: 'application/json' } })
+    const spot = getSelectedSpot()
+    const url = `/api/forecast?station=${encodeURIComponent(spot.station)}`
+    const res = await fetch(url, { headers: { accept: 'application/json' } })
     if (!res.ok) throw new Error(`Forecast error: ${res.status}`)
     const json = await res.json()
     if (!json?.ok) throw new Error('Forecast error')
 
     const waveM = json?.waves?.significantWaveHeightM
     const periodS = json?.waves?.dominantPeriodS
+    const swellDirDeg = json?.waves?.directionDeg
     const windMS = json?.wind?.speedMS
+    const windDirDeg = json?.wind?.directionDeg
 
     const waveFt = ftFromM(waveM)
     const windKts = ktsFromMS(windMS)
@@ -391,10 +494,38 @@ const loadForecast = async () => {
     latestConditions = {
       waveFt: Number.isFinite(waveFt) ? waveFt : null,
       periodS: Number.isFinite(periodS) ? periodS : null,
+      swellDirDeg: Number.isFinite(swellDirDeg) ? swellDirDeg : null,
       windKts: Number.isFinite(windKts) ? windKts : null,
+      windDirDeg: Number.isFinite(windDirDeg) ? windDirDeg : null,
+      station: json?.source?.station ?? null,
+      stationName: json?.source?.stationName ?? null,
+      stationLat: json?.source?.stationLat ?? null,
+      stationLon: json?.source?.stationLon ?? null,
+      spotId: spot.id,
+      spotName: spot.name,
+      spotLat: spot.lat,
+      spotLon: spot.lon,
+      spotExposure: spot.exposure,
     }
 
     forecastBodyEl.textContent = fmtCond(latestConditions)
+
+    ensureMap()
+    if (map && Number.isFinite(latestConditions.stationLat) && Number.isFinite(latestConditions.stationLon)) {
+      const pos = [latestConditions.stationLat, latestConditions.stationLon]
+      if (!buoyMarker) {
+        buoyMarker = window.L.circleMarker(pos, {
+          radius: 7,
+          weight: 2,
+          color: '#0b3d2e',
+          fillColor: '#0b3d2e',
+          fillOpacity: 0.25,
+        }).addTo(map)
+        buoyMarker.bindPopup(`<strong>Buoy</strong><br/>${latestConditions.stationName} (${latestConditions.station})`)
+      } else {
+        buoyMarker.setLatLng(pos)
+      }
+    }
   } catch {
     latestConditions = null
     forecastBodyEl.textContent = 'Buoy data unavailable.'
@@ -404,4 +535,19 @@ const loadForecast = async () => {
 }
 
 render()
+
+spots.forEach((s) => {
+  const opt = document.createElement('option')
+  opt.value = s.id
+  opt.textContent = s.name
+  spotEl.appendChild(opt)
+})
+
+spotEl.value = selectedSpotId
+spotEl.addEventListener('change', () => {
+  selectedSpotId = spotEl.value
+  loadForecast()
+})
+
+ensureMap()
 loadForecast()

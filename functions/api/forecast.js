@@ -1,5 +1,12 @@
-export async function onRequestGet() {
-  const station = '46206'
+export async function onRequestGet({ request }) {
+  const stations = {
+    '46206': { name: 'La Perouse Bank', lat: 48.84, lon: -126.0 },
+    '46204': { name: 'Middle Nomad', lat: 51.38, lon: -128.77 },
+  }
+
+  const requestUrl = new URL(request.url)
+  const stationParam = requestUrl.searchParams.get('station')
+  const station = stationParam && stations[stationParam] ? stationParam : '46206'
   const url = `https://www.ndbc.noaa.gov/data/realtime2/${station}.txt`
 
   try {
@@ -59,6 +66,9 @@ export async function onRequestGet() {
       source: {
         provider: 'NOAA NDBC',
         station,
+        stationName: stations[station]?.name ?? station,
+        stationLat: stations[station]?.lat ?? null,
+        stationLon: stations[station]?.lon ?? null,
         url,
       },
       timestamp: {
