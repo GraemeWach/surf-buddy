@@ -2,6 +2,12 @@ export async function onRequestGet({ request }) {
   const stations = {
     '46206': { name: 'La Perouse Bank', lat: 48.84, lon: -126.0 },
     '46204': { name: 'Middle Nomad', lat: 51.38, lon: -128.77 },
+    '46146': { name: 'Halibut Bank', lat: 49.34, lon: -123.73 },
+    '44137': { name: 'East Scotia Slope', lat: 42.26, lon: -62.03 },
+    '44258': { name: 'Halifax Harbour', lat: 44.5, lon: -63.4 },
+    '45132': { name: 'Port Stanley', lat: 42.46, lon: -81.22 },
+    '45139': { name: 'West Lake Ontario (Grimsby)', lat: 43.25, lon: -79.53 },
+    '45137': { name: 'Georgian Bay', lat: 45.54, lon: -81.02 },
   }
 
   const requestUrl = new URL(request.url)

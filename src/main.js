@@ -359,18 +359,104 @@ const spots = [
     station: '46206',
   },
   {
-    id: 'north-coast',
-    name: 'North Coast (farther)',
-    lat: 51.38,
-    lon: -128.77,
-    exposure: 1.0,
+    id: 'jordan-river',
+    name: 'Jordan River',
+    lat: 48.422,
+    lon: -124.036,
+    exposure: 1.05,
+    station: '46146',
+  },
+  {
+    id: 'sombrio',
+    name: 'Sombrio Beach',
+    lat: 48.529,
+    lon: -124.345,
+    exposure: 1.05,
+    station: '46146',
+  },
+  {
+    id: 'botanical',
+    name: 'Botanical Beach (Port Renfrew)',
+    lat: 48.557,
+    lon: -124.419,
+    exposure: 0.95,
+    station: '46146',
+  },
+  {
+    id: 'chesterman-north',
+    name: 'North Chesterman',
+    lat: 49.147,
+    lon: -125.905,
+    exposure: 0.9,
+    station: '46206',
+  },
+  {
+    id: 'haida-gwaii',
+    name: 'Haida Gwaii (North Beach)',
+    lat: 54.035,
+    lon: -131.926,
+    exposure: 1.1,
     station: '46204',
+  },
+  {
+    id: 'lawrencetown',
+    name: 'Lawrencetown Beach (NS)',
+    lat: 44.645,
+    lon: -63.304,
+    exposure: 1.05,
+    station: '44258',
+  },
+  {
+    id: 'martinique',
+    name: 'Martinique Beach (NS)',
+    lat: 44.663,
+    lon: -62.592,
+    exposure: 1.05,
+    station: '44137',
+  },
+  {
+    id: 'sable-island',
+    name: 'Sable Island (offshore)',
+    lat: 43.94,
+    lon: -59.91,
+    exposure: 1.1,
+    station: '44137',
+  },
+  {
+    id: 'sauble',
+    name: 'Sauble Beach (ON)',
+    lat: 44.637,
+    lon: -81.27,
+    exposure: 1.0,
+    station: '45137',
+  },
+  {
+    id: 'grand-bend',
+    name: 'Grand Bend (ON)',
+    lat: 43.316,
+    lon: -81.757,
+    exposure: 1.0,
+    station: '45132',
+  },
+  {
+    id: 'hamilton',
+    name: 'Hamilton Waterfront (ON)',
+    lat: 43.273,
+    lon: -79.863,
+    exposure: 0.9,
+    station: '45139',
   },
 ]
 
 const buoys = [
   { station: '46206', name: 'La Perouse Bank', lat: 48.84, lon: -126.0 },
   { station: '46204', name: 'Middle Nomad', lat: 51.38, lon: -128.77 },
+  { station: '46146', name: 'Halibut Bank', lat: 49.34, lon: -123.73 },
+  { station: '44137', name: 'East Scotia Slope', lat: 42.26, lon: -62.03 },
+  { station: '44258', name: 'Halifax Harbour', lat: 44.5, lon: -63.4 },
+  { station: '45132', name: 'Port Stanley', lat: 42.46, lon: -81.22 },
+  { station: '45139', name: 'West Lake Ontario (Grimsby)', lat: 43.25, lon: -79.53 },
+  { station: '45137', name: 'Georgian Bay', lat: 45.54, lon: -81.02 },
 ]
 
 const getSelectedSpot = () => spots.find((s) => s.id === selectedSpotId) ?? spots[0]
@@ -552,6 +638,7 @@ const handleGeoSuccess = (pos) => {
 }
 
 const renderNearby = (user) => {
+  const MAX_NEARBY_KM = 300
   const ranked = spots
     .filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lon))
     .map((s) => ({
@@ -559,9 +646,17 @@ const renderNearby = (user) => {
       km: distanceKm(user, { lat: s.lat, lon: s.lon }),
     }))
     .sort((a, b) => a.km - b.km)
-    .slice(0, 5)
+    .filter((x) => x.km <= MAX_NEARBY_KM)
+    .slice(0, 7)
 
   nearbyListEl.innerHTML = ''
+
+  if (ranked.length === 0) {
+    nearbyListEl.textContent = `No saved spots found within ${MAX_NEARBY_KM} km.`
+    nearbyEl.hidden = false
+    return
+  }
+
   ranked.forEach(({ spot, km }) => {
     const btn = document.createElement('button')
     btn.type = 'button'
@@ -627,13 +722,13 @@ const ensureMap = () => {
   })
 
   spotMarkers = spots
-    .filter((s) => s.id !== 'north-coast')
     .map((s) => {
       const m = window.L.marker([s.lat, s.lon]).addTo(map)
       m.bindPopup(`<strong>${s.name}</strong><br/>Click to select.`)
       m.on('click', () => {
         selectedSpotId = s.id
         spotEl.value = s.id
+        selectedStationOverride = null
         loadForecast()
       })
       return m
