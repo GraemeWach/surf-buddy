@@ -458,6 +458,7 @@ let buoyMarker = null
 let map = null
 let spotMarkers = []
 let userMarker = null
+let geoWatchId = null
 
 const toRad = (d) => (d * Math.PI) / 180
 
@@ -476,6 +477,31 @@ const distanceKm = (a, b) => {
 
 const setGeoStatus = (text) => {
   geoStatusEl.textContent = text
+}
+
+const geoErrorText = (err) => {
+  const code = err?.code
+  if (code === 1) return 'Location permission denied.'
+  if (code === 2) return 'Location unavailable.'
+  if (code === 3) return 'Location request timed out.'
+  return 'Unable to get location.'
+}
+
+const handleGeoSuccess = (pos) => {
+  const user = {
+    lat: pos.coords.latitude,
+    lon: pos.coords.longitude,
+  }
+
+  if (geoWatchId != null && navigator.geolocation?.clearWatch) {
+    navigator.geolocation.clearWatch(geoWatchId)
+    geoWatchId = null
+  }
+
+  setGeoStatus('Location found.')
+  setUserMarker(user)
+  renderNearby(user)
+  if (map) map.setView([user.lat, user.lon], Math.max(map.getZoom(), 9))
 }
 
 const renderNearby = (user) => {
@@ -643,23 +669,37 @@ geoBtnEl.addEventListener('click', () => {
     return
   }
 
+  if (geoWatchId != null && navigator.geolocation?.clearWatch) {
+    navigator.geolocation.clearWatch(geoWatchId)
+    geoWatchId = null
+  }
+
   setGeoStatus('Requesting location…')
 
-  navigator.geolocation.getCurrentPosition(
-    (pos) => {
-      const user = {
-        lat: pos.coords.latitude,
-        lon: pos.coords.longitude,
-      }
+  const tryHighAccuracy = () => {
+    setGeoStatus('Trying high accuracy…')
+    navigator.geolocation.getCurrentPosition(
+      handleGeoSuccess,
+      (err) => {
+        setGeoStatus(`${geoErrorText(err)} Trying live updates…`)
+        geoWatchId = navigator.geolocation.watchPosition(
+          handleGeoSuccess,
+          (watchErr) => {
+            setGeoStatus(geoErrorText(watchErr))
+          },
+          { enableHighAccuracy: false, timeout: 30000, maximumAge: 0 },
+        )
+      },
+      { enableHighAccuracy: true, timeout: 25000, maximumAge: 0 },
+    )
+  }
 
-      setGeoStatus('Location found.')
-      setUserMarker(user)
-      renderNearby(user)
-      if (map) map.setView([user.lat, user.lon], Math.max(map.getZoom(), 9))
+  navigator.geolocation.getCurrentPosition(
+    handleGeoSuccess,
+    (err) => {
+      setGeoStatus(`${geoErrorText(err)} Retrying…`)
+      tryHighAccuracy()
     },
-    () => {
-      setGeoStatus('Location permission denied or unavailable.')
-    },
-    { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 },
+    { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 },
   )
 })
