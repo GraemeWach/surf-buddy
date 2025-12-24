@@ -14,6 +14,35 @@ const kgFrom = (value, unit) => {
   return NaN
 }
 
+const setBuoySwellArrows = (stationToDirDeg) => {
+  ensureMap()
+  if (!map || !window.L) return
+
+  buoyDirMarkers.forEach((x) => {
+    try {
+      map.removeLayer(x)
+    } catch {
+      // ignore
+    }
+  })
+  buoyDirMarkers = []
+
+  buoyMarkers.forEach(({ station, marker }) => {
+    const dir = stationToDirDeg[station]
+    if (!Number.isFinite(dir)) return
+    const pos = marker.getLatLng()
+    const html = `<div style="transform: rotate(${dir}deg); font-size: 18px; line-height: 18px; color: #0b3d2e;">➤</div>`
+    const icon = window.L.divIcon({
+      html,
+      className: 'dir-icon',
+      iconSize: [18, 18],
+      iconAnchor: [9, 9],
+    })
+    const m = window.L.marker(pos, { icon, interactive: false }).addTo(map)
+    buoyDirMarkers.push(m)
+  })
+}
+
 const cmFrom = (value, unit) => {
   if (!Number.isFinite(value)) return NaN
   if (unit === 'cm') return value
@@ -162,6 +191,10 @@ app.innerHTML = `
                   <div class="tide-body" id="tide-body"></div>
                 </div>
               </div>
+              <div id="outlook" class="forecast" aria-live="polite">
+                <div class="forecast-title">3-day outlook</div>
+                <div class="forecast-body" id="outlook-body">Loading…</div>
+              </div>
               <div id="warning" class="warning" hidden>
                 <div class="warning-title">Extreme conditions</div>
                 <div class="warning-body" id="warning-body"></div>
@@ -284,6 +317,7 @@ const shortVolumeEl = document.getElementById('short-volume')
 const resetEl = document.getElementById('reset')
 
 const forecastBodyEl = document.getElementById('forecast-body')
+const outlookBodyEl = document.getElementById('outlook-body')
 const tideEl = document.getElementById('tide')
 const tideBodyEl = document.getElementById('tide-body')
 const warningEl = document.getElementById('warning')
@@ -300,6 +334,7 @@ weightUnitEl.value = 'lb'
 
 let latestConditions = null
 let latestMarine = null
+let latestWeather = null
 let selectedSpotId = 'cox-bay'
 let selectedStationOverride = null
 let activeProvince = null
@@ -823,6 +858,134 @@ let spotMarkers = []
 let userMarker = null
 let geoWatchId = null
 let buoyMarkers = []
+let buoyDirMarkers = []
+let refreshTimer = null
+
+const degToCardinal = (deg) => {
+  if (!Number.isFinite(deg)) return '—'
+  const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
+  const i = Math.round(((deg % 360) / 45)) % 8
+  return dirs[i]
+}
+
+const fmtDay = (d) =>
+  d.toLocaleDateString([], {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  })
+
+const summarize3Day = ({ marine, weather }) => {
+  const mt = marine?.hourly?.time
+  const mw = marine?.hourly
+  const wt = weather?.hourly?.time
+  const ww = weather?.hourly
+
+  if (!Array.isArray(mt) || !mw || !Array.isArray(wt) || !ww) return []
+
+  const takeDays = new Map()
+  const now = Date.now()
+
+  for (let i = 0; i < mt.length; i++) {
+    const t = Date.parse(mt[i])
+    if (!Number.isFinite(t) || t < now - 6 * 3600_000) continue
+    const dayKey = new Date(t)
+    dayKey.setHours(0, 0, 0, 0)
+    const key = dayKey.getTime()
+    if (!takeDays.has(key)) takeDays.set(key, [])
+    takeDays.get(key).push(i)
+  }
+
+  const days = Array.from(takeDays.keys()).sort((a, b) => a - b).slice(0, 3)
+
+  const wIndexByTime = new Map()
+  for (let i = 0; i < wt.length; i++) {
+    const t = Date.parse(wt[i])
+    if (Number.isFinite(t)) wIndexByTime.set(t, i)
+  }
+
+  const daySummaries = []
+
+  days.forEach((dayTs) => {
+    const idxs = takeDays.get(dayTs) ?? []
+    const waveHeights = []
+    const wavePeriods = []
+    const windWaveHeights = []
+    const windSpeeds = []
+    const windDirs = []
+
+    idxs.forEach((i) => {
+      const wh = Number(mw.wave_height?.[i])
+      const wp = Number(mw.wave_period?.[i])
+      const wwh = Number(mw.wind_wave_height?.[i])
+      if (Number.isFinite(wh)) waveHeights.push(wh)
+      if (Number.isFinite(wp)) wavePeriods.push(wp)
+      if (Number.isFinite(wwh)) windWaveHeights.push(wwh)
+
+      const t = Date.parse(mt[i])
+      const wi = wIndexByTime.get(t)
+      if (wi != null) {
+        const ws = Number(ww.windspeed_10m?.[wi])
+        const wd = Number(ww.winddirection_10m?.[wi])
+        if (Number.isFinite(ws)) windSpeeds.push(ws)
+        if (Number.isFinite(wd)) windDirs.push(wd)
+      }
+    })
+
+    const avg = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : NaN)
+    const max = (xs) => (xs.length ? Math.max(...xs) : NaN)
+
+    const waveFt = ftFromM(max(waveHeights))
+    const windWaveFt = ftFromM(max(windWaveHeights))
+    const periodS = avg(wavePeriods)
+    const windKts = ktsFromMS(avg(windSpeeds) / 3.6)
+    const windDir = avg(windDirs)
+
+    daySummaries.push({
+      day: new Date(dayTs),
+      waveFt: Number.isFinite(waveFt) ? waveFt : null,
+      windWaveFt: Number.isFinite(windWaveFt) ? windWaveFt : null,
+      periodS: Number.isFinite(periodS) ? periodS : null,
+      windKts: Number.isFinite(windKts) ? windKts : null,
+      windDirDeg: Number.isFinite(windDir) ? windDir : null,
+    })
+  })
+
+  return daySummaries
+}
+
+const renderOutlook = () => {
+  const days = summarize3Day({ marine: latestMarine, weather: latestWeather })
+  if (!days.length) {
+    outlookBodyEl.textContent = 'Outlook unavailable.'
+    return
+  }
+
+  const ul = document.createElement('ul')
+  ul.className = 'cond-list'
+  days.forEach((d) => {
+    const wave = d.waveFt != null ? `${d.waveFt.toFixed(1)} ft` : '—'
+    const per = d.periodS != null ? `${Math.round(d.periodS)} s` : '—'
+    const wind = d.windKts != null ? `${Math.round(d.windKts)} kts` : '—'
+    const windDir = d.windDirDeg != null ? `${Math.round(d.windDirDeg)}° ${degToCardinal(d.windDirDeg)}` : '—'
+    const windWave = d.windWaveFt != null ? `${d.windWaveFt.toFixed(1)} ft` : '—'
+
+    const li = document.createElement('li')
+    li.className = 'cond-item'
+    const k = document.createElement('span')
+    k.className = 'cond-k'
+    k.textContent = fmtDay(d.day)
+    const v = document.createElement('span')
+    v.className = 'cond-v'
+    v.textContent = `Wave ${wave} @ ${per} • Wind ${wind} ${windDir} • Wind swell ${windWave}`
+    li.appendChild(k)
+    li.appendChild(v)
+    ul.appendChild(li)
+  })
+
+  outlookBodyEl.innerHTML = ''
+  outlookBodyEl.appendChild(ul)
+}
 
 const clearSpotMarkers = () => {
   if (!map) return
@@ -981,37 +1144,10 @@ const ensureMap = () => {
     attributionControl: true,
   }).setView([49.1, -125.9], 9)
 
-  const osm = window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
     attribution: '&copy; OpenStreetMap contributors',
-  })
-
-  const esri = window.L.tileLayer(
-    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    {
-      maxZoom: 19,
-      attribution:
-        'Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
-    },
-  )
-
-  const gebco = window.L.tileLayer.wms('https://wms.gebco.net/mapserv?', {
-    layers: 'GEBCO_LATEST',
-    format: 'image/png',
-    transparent: true,
-    attribution: 'Imagery reproduced from the GEBCO_2024 Grid (GEBCO)',
-  })
-
-  osm.addTo(map)
-  gebco.addTo(map)
-
-  window.L.control
-    .layers(
-      { Street: osm, Satellite: esri },
-      { Bathymetry: gebco },
-      { collapsed: true },
-    )
-    .addTo(map)
+  }).addTo(map)
 
   buoyMarkers = buoys.map((b) => {
     const m = window.L.circleMarker([b.lat, b.lon], {
@@ -1028,6 +1164,16 @@ const ensureMap = () => {
     })
     return { station: b.station, marker: m }
   })
+
+  // Direction arrows (updated when we fetch conditions).
+  buoyDirMarkers.forEach((x) => {
+    try {
+      map.removeLayer(x)
+    } catch {
+      // ignore
+    }
+  })
+  buoyDirMarkers = []
 
   renderSpotMarkers()
 }
@@ -1113,15 +1259,34 @@ const loadForecast = async () => {
       console.warn('Marine fetch failed:', err)
     }
 
+    // Fetch weather (no key).
+    try {
+      const wUrl = `/api/weather?lat=${encodeURIComponent(spot.lat)}&lon=${encodeURIComponent(spot.lon)}`
+      const wRes = await fetch(wUrl, { headers: { accept: 'application/json' } })
+      const wText = await wRes.text()
+      if (!wRes.ok) throw new Error(`Weather error: ${wRes.status} ${wText}`)
+      const wJson = JSON.parse(wText)
+      latestWeather = wJson?.ok ? wJson : null
+    } catch (err) {
+      latestWeather = null
+      console.warn('Weather fetch failed:', err)
+    }
+
     renderConditionsList()
+    renderOutlook()
+
+    // Update simple "swell pattern" arrows.
+    setBuoySwellArrows({ [station]: swellDirDeg })
 
     ensureMap()
     highlightSelectedBuoy()
   } catch (err) {
     latestConditions = null
     latestMarine = null
+    latestWeather = null
     tideEl.hidden = true
     forecastBodyEl.textContent = err instanceof Error && err.message ? err.message : 'Data unavailable.'
+    outlookBodyEl.textContent = 'Outlook unavailable.'
   } finally {
     render()
   }

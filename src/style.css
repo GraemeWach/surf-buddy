@@ -559,6 +559,11 @@ p {
   font-family: var(--sans);
 }
 
+.dir-icon {
+  background: transparent;
+  border: none;
+}
+
 .form {
   display: grid;
   gap: 0.9rem;
