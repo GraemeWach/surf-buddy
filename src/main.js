@@ -59,9 +59,14 @@ const fmtFtIn = (cm) => {
   return `${ft}'${inch}"`
 }
 
-const recommend = ({ heightCm, weightKg, ability, conditions }) => {
+const recommend = ({ heightCm, weightKg, ability, conditions, spot, mode }) => {
   const h = clamp(heightCm, 120, 220)
   const w = clamp(weightKg, 35, 150)
+
+  const waveType = spot?.waveType ?? 'beachbreak'
+  const bottom = spot?.bottom ?? 'sand'
+  const beginnerFriendly = spot?.beginnerFriendly ?? true
+  const isTechnicalSpot = waveType !== 'beachbreak' || bottom !== 'sand'
 
   const waveFtRaw = conditions?.waveFt
   const periodS = conditions?.periodS
@@ -80,12 +85,29 @@ const recommend = ({ heightCm, weightKg, ability, conditions }) => {
   const isHeavy = hasForecast ? energy >= 6.5 && isClean : false
   const isExtreme = hasForecast ? waveFt >= 8 || (energy >= 7.5 && isClean) : false
 
+  const pref = mode === 'performance' ? 'performance' : 'standard'
+
   let boardType = 'All-around'
   if (hasForecast) {
     if (waveFt < 3) boardType = 'Longboard'
     else if (waveFt < 5) boardType = 'Midlength'
     else if (waveFt < 7) boardType = 'Shortboard'
     else boardType = 'Step-up'
+  }
+
+  // Spot-aware adjustment.
+  if (pref === 'standard') {
+    if (ability === 'beginner' && isTechnicalSpot) {
+      boardType = waveFt >= 5 ? 'Midlength' : 'Longboard'
+    }
+    if (ability !== 'advanced' && !beginnerFriendly && (boardType === 'Shortboard' || boardType === 'Step-up')) {
+      boardType = 'Midlength'
+    }
+  } else {
+    // Performance: nudge toward more responsive boards if the spot tends to be punchier.
+    if (hasForecast && isClean && periodS >= 10 && waveFt >= 4 && ability !== 'beginner') {
+      if (boardType === 'Midlength' && waveType !== 'beachbreak') boardType = 'Shortboard'
+    }
   }
 
   if (ability === 'beginner' && boardType === 'Shortboard') boardType = 'Midlength'
@@ -106,6 +128,7 @@ const recommend = ({ heightCm, weightKg, ability, conditions }) => {
   let volumeShortMax = w * v.shortMax
 
   if (isHeavy) {
+    // Heavy surf: slightly reduce volume to keep control.
     volumeMin *= 0.95
     volumeMax *= 0.98
   }
@@ -113,6 +136,16 @@ const recommend = ({ heightCm, weightKg, ability, conditions }) => {
   if (!isClean && hasForecast) {
     volumeMin *= 1.05
     volumeMax *= 1.08
+  }
+
+  if (pref === 'standard') {
+    // Standard: bias toward stability.
+    volumeMin *= 1.03
+    volumeMax *= 1.04
+  } else {
+    // Performance: bias slightly lower for responsiveness.
+    volumeMin *= 0.97
+    volumeMax *= 0.98
   }
 
   let lengthCmMin = h + 10
@@ -133,6 +166,57 @@ const recommend = ({ heightCm, weightKg, ability, conditions }) => {
     lengthCmMax = h + 30
   }
 
+  const makeExplanation = () => {
+    const spotName = spot?.name ?? 'this spot'
+    const spotBits = `${waveType}${bottom ? `, ${bottom}` : ''}`
+
+    const waveTxt = Number.isFinite(waveFt) ? `${waveFt.toFixed(1)} ft` : 'unknown wave size'
+    const perTxt = Number.isFinite(periodS) ? `${Math.round(periodS)}s` : 'unknown period'
+    const windTxt = Number.isFinite(windKts) ? `${Math.round(windKts)} kts` : 'unknown wind'
+    const cleanTxt = hasForecast ? (isClean ? 'cleaner' : 'choppier') : 'uncertain'
+
+    const summary =
+      pref === 'performance'
+        ? `Performance pick for ${spotName} (${spotBits}). With ${waveTxt} @ ${perTxt} and ~${windTxt} winds, this leans toward a board that feels quicker and more maneuverable in ${cleanTxt} water.`
+        : `Standard pick for ${spotName} (${spotBits}). With ${waveTxt} @ ${perTxt} and ~${windTxt} winds, this leans toward an easier board that paddles well and stays stable in ${cleanTxt} water.`
+
+    const pros = []
+    const cons = []
+
+    if (boardType === 'Longboard') {
+      pros.push('Easiest paddling and wave count')
+      pros.push('More forgiving in messy sections')
+      cons.push('Harder to handle in steep or heavy waves')
+      cons.push('Less responsive for tight turns')
+    } else if (boardType === 'Midlength') {
+      pros.push('Good balance of paddle power and control')
+      pros.push('Forgiving takeoffs vs shortboard')
+      cons.push('Not as nimble as a shortboard')
+      cons.push('Can feel sticky if the wave is very fast/steep')
+    } else if (boardType === 'Shortboard') {
+      pros.push('More responsive and easier to fit in the pocket')
+      pros.push('Better control in steeper faces')
+      cons.push('Harder paddling; requires better positioning')
+      cons.push('Less forgiving on late drops')
+    } else if (boardType === 'Step-up') {
+      pros.push('Extra hold and confidence in bigger surf')
+      pros.push('Paddles better than a true shortboard in size')
+      cons.push('Overkill in smaller surf')
+      cons.push('Slower rail-to-rail')
+    }
+
+    if (pref === 'standard' && isTechnicalSpot) {
+      pros.push('Extra stability helps around rock/reef zones')
+      cons.push('Tradeoff: you may sacrifice some high-performance turns')
+    }
+
+    if (pref === 'performance' && ability === 'beginner') {
+      cons.push('Performance mode can be unforgiving for beginners')
+    }
+
+    return { summary, pros, cons }
+  }
+
   return {
     boardType,
     isExtreme,
@@ -144,6 +228,7 @@ const recommend = ({ heightCm, weightKg, ability, conditions }) => {
     volumeMax: Math.round(volumeMax),
     volumeShortMin: Math.round(volumeShortMin),
     volumeShortMax: Math.round(volumeShortMax),
+    explanation: makeExplanation(),
   }
 }
 
@@ -250,7 +335,7 @@ app.innerHTML = `
 
             <div id="results" class="results" hidden>
               <div class="result">
-                <div class="result-title">Recommendation</div>
+                <div class="result-title">Recommendation (Standard)</div>
                 <div class="result-row">
                   <div class="result-k">Board type</div>
                   <div class="result-v" id="board-type"></div>
@@ -263,14 +348,49 @@ app.innerHTML = `
                   <div class="result-k">Volume</div>
                   <div class="result-v" id="allaround-volume"></div>
                 </div>
+                <div class="result-foot" id="explain"></div>
+                <div class="explain-cols">
+                  <div>
+                    <div class="explain-sub">Pros</div>
+                    <ul class="explain-list" id="pros"></ul>
+                  </div>
+                  <div>
+                    <div class="explain-sub">Cons</div>
+                    <ul class="explain-list" id="cons"></ul>
+                  </div>
+                </div>
               </div>
 
               <div class="result">
-                <div class="result-title">Lower-volume range</div>
+                <div class="result-title">Recommendation (Performance)</div>
+                <div class="result-row">
+                  <div class="result-k">Board type</div>
+                  <div class="result-v" id="board-type-perf"></div>
+                </div>
+                <div class="result-row">
+                  <div class="result-k">Length</div>
+                  <div class="result-v" id="length-perf"></div>
+                </div>
                 <div class="result-row">
                   <div class="result-k">Volume</div>
-                  <div class="result-v" id="short-volume"></div>
+                  <div class="result-v" id="volume-perf"></div>
                 </div>
+                <div class="result-foot" id="explain-perf"></div>
+                <div class="explain-cols">
+                  <div>
+                    <div class="explain-sub">Pros</div>
+                    <ul class="explain-list" id="pros-perf"></ul>
+                  </div>
+                  <div>
+                    <div class="explain-sub">Cons</div>
+                    <ul class="explain-list" id="cons-perf"></ul>
+                  </div>
+                </div>
+              </div>
+
+              <div class="result">
+                <div class="result-title">Wave + board scale</div>
+                <div class="viz" id="viz" aria-label="Wave period visualization"></div>
               </div>
             </div>
           </div>
@@ -313,7 +433,18 @@ const resultsEl = document.getElementById('results')
 const boardTypeEl = document.getElementById('board-type')
 const allaroundLengthEl = document.getElementById('allaround-length')
 const allaroundVolumeEl = document.getElementById('allaround-volume')
-const shortVolumeEl = document.getElementById('short-volume')
+const explainEl = document.getElementById('explain')
+const prosEl = document.getElementById('pros')
+const consEl = document.getElementById('cons')
+
+const boardTypePerfEl = document.getElementById('board-type-perf')
+const lengthPerfEl = document.getElementById('length-perf')
+const volumePerfEl = document.getElementById('volume-perf')
+const explainPerfEl = document.getElementById('explain-perf')
+const prosPerfEl = document.getElementById('pros-perf')
+const consPerfEl = document.getElementById('cons-perf')
+
+const vizEl = document.getElementById('viz')
 const resetEl = document.getElementById('reset')
 
 const forecastBodyEl = document.getElementById('forecast-body')
@@ -675,23 +806,161 @@ const render = () => {
     return
   }
 
-  const rec = recommend({ heightCm, weightKg, ability, conditions: latestConditions })
+  const spot = getSelectedSpot()
+  const recStd = recommend({
+    heightCm,
+    weightKg,
+    ability,
+    conditions: latestConditions,
+    spot,
+    mode: 'standard',
+  })
+  const recPerf = recommend({
+    heightCm,
+    weightKg,
+    ability,
+    conditions: latestConditions,
+    spot,
+    mode: 'performance',
+  })
 
-  boardTypeEl.textContent = rec.boardType
-  allaroundLengthEl.textContent = `${rec.lengthHumanMin} – ${rec.lengthHumanMax}`
-  allaroundVolumeEl.textContent = `${rec.volumeMin} – ${rec.volumeMax} L`
-  shortVolumeEl.textContent = `${rec.volumeShortMin} – ${rec.volumeShortMax} L`
+  boardTypeEl.textContent = recStd.boardType
+  allaroundLengthEl.textContent = `${recStd.lengthHumanMin} – ${recStd.lengthHumanMax}`
+  allaroundVolumeEl.textContent = `${recStd.volumeMin} – ${recStd.volumeMax} L`
+
+  explainEl.textContent = recStd.explanation?.summary ?? ''
+  prosEl.innerHTML = ''
+  ;(recStd.explanation?.pros ?? []).slice(0, 5).forEach((t) => {
+    const li = document.createElement('li')
+    li.textContent = t
+    prosEl.appendChild(li)
+  })
+  consEl.innerHTML = ''
+  ;(recStd.explanation?.cons ?? []).slice(0, 5).forEach((t) => {
+    const li = document.createElement('li')
+    li.textContent = t
+    consEl.appendChild(li)
+  })
+
+  boardTypePerfEl.textContent = recPerf.boardType
+  lengthPerfEl.textContent = `${recPerf.lengthHumanMin} – ${recPerf.lengthHumanMax}`
+  volumePerfEl.textContent = `${recPerf.volumeMin} – ${recPerf.volumeMax} L`
+
+  explainPerfEl.textContent = recPerf.explanation?.summary ?? ''
+  prosPerfEl.innerHTML = ''
+  ;(recPerf.explanation?.pros ?? []).slice(0, 5).forEach((t) => {
+    const li = document.createElement('li')
+    li.textContent = t
+    prosPerfEl.appendChild(li)
+  })
+  consPerfEl.innerHTML = ''
+  ;(recPerf.explanation?.cons ?? []).slice(0, 5).forEach((t) => {
+    const li = document.createElement('li')
+    li.textContent = t
+    consPerfEl.appendChild(li)
+  })
+
+  const waveFt = latestConditions?.waveFt
+  const periodS = latestConditions?.periodS
+  renderWaveViz({
+    container: vizEl,
+    waveFt: Number.isFinite(waveFt) ? waveFt : null,
+    periodS: Number.isFinite(periodS) ? periodS : null,
+    riderHeightCm: heightCm,
+    boardLengthCm: recStd.lengthCmMax,
+  })
 
   resultsEl.hidden = false
   setHint('')
 
-  if (rec.isExtreme && ability !== 'advanced') {
+  if (recStd.isExtreme && ability !== 'advanced') {
     warningBodyEl.textContent =
       'Forecast conditions appear heavy. If you’re not an advanced surfer, consider sitting it out or choosing a sheltered spot.'
     warningEl.hidden = false
   } else {
     warningEl.hidden = true
   }
+}
+
+const renderWaveViz = ({ container, waveFt, periodS, riderHeightCm, boardLengthCm }) => {
+  if (!container) return
+  if (!Number.isFinite(waveFt) || !Number.isFinite(periodS)) {
+    container.textContent = 'Wave visualization unavailable.'
+    return
+  }
+
+  const W = 640
+  const H = 240
+  const pad = 18
+  const plotW = 420
+  const plotH = H - pad * 2
+  const originX = pad
+  const originY = pad + plotH / 2
+
+  const amp = Math.max(0.5, waveFt / 2)
+  const yScale = (plotH / 2) / amp
+  const samples = 120
+  const xMax = periodS
+
+  const pts = []
+  for (let i = 0; i <= samples; i++) {
+    const t = (i / samples) * xMax
+    const phase = (t / xMax) * Math.PI * 2
+    const yFt = amp * Math.sin(phase)
+    const x = originX + (t / xMax) * plotW
+    const y = originY - yFt * yScale
+    pts.push([x, y])
+  }
+
+  const path = pts
+    .map(([x, y], i) => `${i === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`)
+    .join(' ')
+
+  const crestY = originY - amp * yScale
+  const troughY = originY + amp * yScale
+
+  const personH = Math.max(130, Math.min(200, (riderHeightCm / 180) * 170))
+  const boardH = Math.max(110, Math.min(240, (boardLengthCm / 200) * 170))
+
+  const figX = originX + plotW + 44
+  const baseY = pad + plotH
+
+  container.innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" width="100%" height="240" role="img" aria-label="Wave period graph">
+      <rect x="0" y="0" width="${W}" height="${H}" fill="rgba(255,255,255,0.25)" />
+      <line x1="${originX}" y1="${originY}" x2="${originX + plotW}" y2="${originY}" stroke="rgba(20,20,20,0.18)" stroke-width="1" />
+      <line x1="${originX}" y1="${pad}" x2="${originX}" y2="${pad + plotH}" stroke="rgba(20,20,20,0.18)" stroke-width="1" />
+      <path d="${path}" fill="none" stroke="#0b3d2e" stroke-width="2" />
+      <line x1="${originX + plotW + 8}" y1="${crestY}" x2="${originX + plotW + 22}" y2="${crestY}" stroke="#0b3d2e" stroke-width="2" />
+      <line x1="${originX + plotW + 8}" y1="${troughY}" x2="${originX + plotW + 22}" y2="${troughY}" stroke="#0b3d2e" stroke-width="2" />
+      <text x="${originX + plotW + 26}" y="${crestY + 4}" font-size="12" fill="rgba(20,20,20,0.75)">${waveFt.toFixed(
+        1,
+      )} ft</text>
+      <text x="${originX}" y="${H - 6}" font-size="12" fill="rgba(20,20,20,0.75)">0s</text>
+      <text x="${originX + plotW - 24}" y="${H - 6}" font-size="12" fill="rgba(20,20,20,0.75)">${Math.round(
+        periodS,
+      )}s</text>
+      <text x="${originX + 6}" y="${pad + 12}" font-size="12" fill="rgba(20,20,20,0.75)">Wave height (ft)</text>
+      <text x="${originX + 6}" y="${pad + 28}" font-size="12" fill="rgba(20,20,20,0.75)">One period snapshot</text>
+
+      <!-- person -->
+      <g transform="translate(${figX},${baseY})">
+        <line x1="24" y1="0" x2="24" y2="${-personH}" stroke="rgba(20,20,20,0.15)" stroke-width="1" />
+        <circle cx="24" cy="${-personH + 14}" r="10" fill="rgba(140,33,33,0.25)" stroke="rgba(140,33,33,0.55)" />
+        <rect x="18" y="${-personH + 24}" width="12" height="${personH - 44}" rx="6" fill="rgba(140,33,33,0.18)" stroke="rgba(140,33,33,0.45)" />
+        <line x1="18" y1="${-personH + 52}" x2="8" y2="${-personH + 74}" stroke="rgba(140,33,33,0.45)" stroke-width="3" stroke-linecap="round" />
+        <line x1="30" y1="${-personH + 52}" x2="40" y2="${-personH + 74}" stroke="rgba(140,33,33,0.45)" stroke-width="3" stroke-linecap="round" />
+        <text x="0" y="14" font-size="12" fill="rgba(20,20,20,0.75)">Rider</text>
+      </g>
+
+      <!-- board -->
+      <g transform="translate(${figX + 72},${baseY})">
+        <line x1="16" y1="0" x2="16" y2="${-boardH}" stroke="rgba(20,20,20,0.15)" stroke-width="1" />
+        <rect x="6" y="${-boardH}" width="20" height="${boardH}" rx="10" fill="rgba(11,61,46,0.16)" stroke="rgba(11,61,46,0.55)" />
+        <text x="0" y="14" font-size="12" fill="rgba(20,20,20,0.75)">Board</text>
+      </g>
+    </svg>
+  `
 }
 
 document.getElementById('board-form').addEventListener('submit', (e) => {
