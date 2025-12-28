@@ -38,6 +38,26 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  position: relative;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url('/background.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  z-index: -2;
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: rgba(251, 250, 247, 0.78);
+  z-index: -1;
 }
 
 h1 {
@@ -73,6 +93,7 @@ p {
 
 #app {
   min-height: 100vh;
+  position: relative;
 }
 
 .page {
@@ -185,8 +206,7 @@ p {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(180deg, rgba(251, 250, 247, 0.55), rgba(251, 250, 247, 0.92)),
-    url('https://upload.wikimedia.org/wikipedia/commons/1/16/Crab_shell_partially_buried_in_sand_at_Long_Beach%2C_in_Tofino%2C_British_Columbia_Canada.JPG');
+    linear-gradient(180deg, rgba(251, 250, 247, 0.45), rgba(251, 250, 247, 0.86));
   background-size: cover;
   background-position: center;
   pointer-events: none;
