@@ -50,6 +50,25 @@ const cmFrom = (value, unit) => {
   return NaN
 }
 
+const estimateSurfFt = ({ waveFt, windWaveFt, periodS, windKts, spotExposure }) => {
+  if (!Number.isFinite(waveFt)) return NaN
+  const exposure = Number.isFinite(spotExposure) ? clamp(spotExposure, 0.6, 1.35) : 1
+  const p = Number.isFinite(periodS) ? clamp(periodS, 6, 20) : 10
+  const w = Number.isFinite(windKts) ? clamp(windKts, 0, 40) : 12
+
+  const periodBoostRaw = 0.75 + ((p - 10) / 10) * 0.2
+  const periodBoost = clamp(periodBoostRaw, 0.65, 1.05)
+  const windPenalty = w > 25 ? 0.85 : w > 18 ? 0.92 : 1
+  const nearshoreFactor = 1.15
+
+  const ww = Number.isFinite(windWaveFt) ? windWaveFt : NaN
+  const windWaveRatio = Number.isFinite(ww) && waveFt > 0 ? clamp(ww / waveFt, 0, 1) : 0
+  const chopPenalty = 1 - clamp(windWaveRatio, 0, 0.8) * 0.25
+
+  const est = waveFt * nearshoreFactor * exposure * periodBoost * windPenalty * chopPenalty
+  return est
+}
+
 const fmtFtIn = (cm) => {
   const totalIn = cm / 2.54
   const ft = Math.floor(totalIn / 12)
@@ -983,7 +1002,7 @@ resetEl.addEventListener('click', () => {
   heightEl.focus()
 })
 
-const fmtCond = (conditions) => {
+const fmtCond = (conditions, marine) => {
   if (!conditions) return null
   const station = conditions.stationName ? `${conditions.stationName} (${conditions.station})` : '—'
   const wave = Number.isFinite(conditions.waveFt) ? `${conditions.waveFt.toFixed(1)} ft` : '—'
@@ -992,9 +1011,26 @@ const fmtCond = (conditions) => {
   const swellDir = Number.isFinite(conditions.swellDirDeg) ? `${Math.round(conditions.swellDirDeg)}°` : '—'
   const windDir = Number.isFinite(conditions.windDirDeg) ? `${Math.round(conditions.windDirDeg)}°` : '—'
 
+  const modelWaveM = marine?.current?.wave_height
+  const modelPeriodS = marine?.current?.wave_period
+  const modelWindWaveM = marine?.current?.wind_wave_height
+  const baseWaveFt = Number.isFinite(modelWaveM) ? ftFromM(modelWaveM) : conditions.waveFt
+  const basePeriodS = Number.isFinite(modelPeriodS) ? modelPeriodS : conditions.periodS
+  const baseWindWaveFt = Number.isFinite(modelWindWaveM) ? ftFromM(modelWindWaveM) : NaN
+
+  const estSurf = estimateSurfFt({
+    waveFt: baseWaveFt,
+    windWaveFt: baseWindWaveFt,
+    periodS: basePeriodS,
+    windKts: conditions.windKts,
+    spotExposure: conditions.spotExposure,
+  })
+  const estSurfTxt = Number.isFinite(estSurf) ? `${estSurf.toFixed(1)} ft` : '—'
+
   const parts = [
     { k: 'Buoy', v: station },
     { k: 'Wave', v: `${wave} @ ${period}` },
+    { k: 'Est. surf', v: estSurfTxt },
     { k: 'Swell dir', v: swellDir },
     { k: 'Wind', v: `${wind} @ ${windDir}` },
   ]
@@ -1080,7 +1116,7 @@ const tideFromMarine = (marine) => {
 }
 
 const renderConditionsList = () => {
-  const buoyParts = fmtCond(latestConditions)
+  const buoyParts = fmtCond(latestConditions, latestMarine)
   const marineParts = fmtMarine(latestMarine)
   const parts = [...(buoyParts ?? []), ...marineParts]
 
@@ -1210,9 +1246,18 @@ const summarize3Day = ({ marine, weather }) => {
     const windKts = ktsFromMS(avg(windSpeeds) / 3.6)
     const windDir = avg(windDirs)
 
+    const estSurfFt = estimateSurfFt({
+      waveFt,
+      windWaveFt,
+      periodS,
+      windKts,
+      spotExposure: latestConditions?.spotExposure,
+    })
+
     daySummaries.push({
       day: new Date(dayTs),
       waveFt: Number.isFinite(waveFt) ? waveFt : null,
+      estSurfFt: Number.isFinite(estSurfFt) ? estSurfFt : null,
       windWaveFt: Number.isFinite(windWaveFt) ? windWaveFt : null,
       periodS: Number.isFinite(periodS) ? periodS : null,
       windKts: Number.isFinite(windKts) ? windKts : null,
@@ -1234,6 +1279,7 @@ const renderOutlook = () => {
   ul.className = 'cond-list'
   days.forEach((d) => {
     const wave = d.waveFt != null ? `${d.waveFt.toFixed(1)} ft` : '—'
+    const surf = d.estSurfFt != null ? `${d.estSurfFt.toFixed(1)} ft` : '—'
     const per = d.periodS != null ? `${Math.round(d.periodS)} s` : '—'
     const wind = d.windKts != null ? `${Math.round(d.windKts)} kts` : '—'
     const windDir = d.windDirDeg != null ? `${Math.round(d.windDirDeg)}° ${degToCardinal(d.windDirDeg)}` : '—'
@@ -1246,7 +1292,7 @@ const renderOutlook = () => {
     k.textContent = fmtDay(d.day)
     const v = document.createElement('span')
     v.className = 'cond-v'
-    v.textContent = `Wave ${wave} @ ${per} • Wind ${wind} ${windDir} • Wind swell ${windWave}`
+    v.textContent = `Surf ${surf} • Wave ${wave} @ ${per} • Wind ${wind} ${windDir} • Wind swell ${windWave}`
     li.appendChild(k)
     li.appendChild(v)
     ul.appendChild(li)
