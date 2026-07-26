@@ -78,7 +78,7 @@ const fmtFtIn = (cm) => {
   return `${ft}'${inch}"`
 }
 
-const recommend = ({ heightCm, weightKg, ability, conditions, spot, mode }) => {
+const recommend = ({ heightCm, weightKg, ability, conditions, spot }) => {
   const h = clamp(heightCm, 120, 220)
   const w = clamp(weightKg, 35, 150)
 
@@ -104,8 +104,6 @@ const recommend = ({ heightCm, weightKg, ability, conditions, spot, mode }) => {
   const isHeavy = hasForecast ? energy >= 6.5 && isClean : false
   const isExtreme = hasForecast ? waveFt >= 8 || (energy >= 7.5 && isClean) : false
 
-  const pref = mode === 'performance' ? 'performance' : 'standard'
-
   let boardType = 'All-around'
   if (hasForecast) {
     if (waveFt < 3) boardType = 'Longboard'
@@ -115,18 +113,11 @@ const recommend = ({ heightCm, weightKg, ability, conditions, spot, mode }) => {
   }
 
   // Spot-aware adjustment.
-  if (pref === 'standard') {
-    if (ability === 'beginner' && isTechnicalSpot) {
-      boardType = waveFt >= 5 ? 'Midlength' : 'Longboard'
-    }
-    if (ability !== 'advanced' && !beginnerFriendly && (boardType === 'Shortboard' || boardType === 'Step-up')) {
-      boardType = 'Midlength'
-    }
-  } else {
-    // Performance: nudge toward more responsive boards if the spot tends to be punchier.
-    if (hasForecast && isClean && periodS >= 10 && waveFt >= 4 && ability !== 'beginner') {
-      if (boardType === 'Midlength' && waveType !== 'beachbreak') boardType = 'Shortboard'
-    }
+  if (ability === 'beginner' && isTechnicalSpot) {
+    boardType = waveFt >= 5 ? 'Midlength' : 'Longboard'
+  }
+  if (ability !== 'advanced' && !beginnerFriendly && (boardType === 'Shortboard' || boardType === 'Step-up')) {
+    boardType = 'Midlength'
   }
 
   if (ability === 'beginner' && boardType === 'Shortboard') boardType = 'Midlength'
@@ -157,15 +148,9 @@ const recommend = ({ heightCm, weightKg, ability, conditions, spot, mode }) => {
     volumeMax *= 1.08
   }
 
-  if (pref === 'standard') {
-    // Standard: bias toward stability.
-    volumeMin *= 1.03
-    volumeMax *= 1.04
-  } else {
-    // Performance: bias slightly lower for responsiveness.
-    volumeMin *= 0.97
-    volumeMax *= 0.98
-  }
+  // Bias toward stability.
+  volumeMin *= 1.03
+  volumeMax *= 1.04
 
   let lengthCmMin = h + 10
   let lengthCmMax = h + 25
@@ -194,10 +179,7 @@ const recommend = ({ heightCm, weightKg, ability, conditions, spot, mode }) => {
     const windTxt = Number.isFinite(windKts) ? `${Math.round(windKts)} kts` : 'unknown wind'
     const cleanTxt = hasForecast ? (isClean ? 'cleaner' : 'choppier') : 'uncertain'
 
-    const summary =
-      pref === 'performance'
-        ? `Performance pick for ${spotName} (${spotBits}). With ${waveTxt} @ ${perTxt} and ~${windTxt} winds, this leans toward a board that feels quicker and more maneuverable in ${cleanTxt} water.`
-        : `Standard pick for ${spotName} (${spotBits}). With ${waveTxt} @ ${perTxt} and ~${windTxt} winds, this leans toward an easier board that paddles well and stays stable in ${cleanTxt} water.`
+    const summary = `Recommended for ${spotName} (${spotBits}). With ${waveTxt} @ ${perTxt} and ~${windTxt} winds, this leans toward an easier board that paddles well and stays stable in ${cleanTxt} water.`
 
     const pros = []
     const cons = []
@@ -224,13 +206,9 @@ const recommend = ({ heightCm, weightKg, ability, conditions, spot, mode }) => {
       cons.push('Slower rail-to-rail')
     }
 
-    if (pref === 'standard' && isTechnicalSpot) {
+    if (isTechnicalSpot) {
       pros.push('Extra stability helps around rock/reef zones')
       cons.push('Tradeoff: you may sacrifice some high-performance turns')
-    }
-
-    if (pref === 'performance' && ability === 'beginner') {
-      cons.push('Performance mode can be unforgiving for beginners')
     }
 
     return { summary, pros, cons }
@@ -354,7 +332,7 @@ app.innerHTML = `
 
             <div id="results" class="results" hidden>
               <div class="result">
-                <div class="result-title">Recommendation (Standard)</div>
+                <div class="result-title">Recommendation</div>
                 <div class="result-row">
                   <div class="result-k">Board type</div>
                   <div class="result-v" id="board-type"></div>
@@ -376,33 +354,6 @@ app.innerHTML = `
                   <div>
                     <div class="explain-sub">Cons</div>
                     <ul class="explain-list" id="cons"></ul>
-                  </div>
-                </div>
-              </div>
-
-              <div class="result">
-                <div class="result-title">Recommendation (Performance)</div>
-                <div class="result-row">
-                  <div class="result-k">Board type</div>
-                  <div class="result-v" id="board-type-perf"></div>
-                </div>
-                <div class="result-row">
-                  <div class="result-k">Length</div>
-                  <div class="result-v" id="length-perf"></div>
-                </div>
-                <div class="result-row">
-                  <div class="result-k">Volume</div>
-                  <div class="result-v" id="volume-perf"></div>
-                </div>
-                <div class="result-foot" id="explain-perf"></div>
-                <div class="explain-cols">
-                  <div>
-                    <div class="explain-sub">Pros</div>
-                    <ul class="explain-list" id="pros-perf"></ul>
-                  </div>
-                  <div>
-                    <div class="explain-sub">Cons</div>
-                    <ul class="explain-list" id="cons-perf"></ul>
                   </div>
                 </div>
               </div>
@@ -455,13 +406,6 @@ const allaroundVolumeEl = document.getElementById('allaround-volume')
 const explainEl = document.getElementById('explain')
 const prosEl = document.getElementById('pros')
 const consEl = document.getElementById('cons')
-
-const boardTypePerfEl = document.getElementById('board-type-perf')
-const lengthPerfEl = document.getElementById('length-perf')
-const volumePerfEl = document.getElementById('volume-perf')
-const explainPerfEl = document.getElementById('explain-perf')
-const prosPerfEl = document.getElementById('pros-perf')
-const consPerfEl = document.getElementById('cons-perf')
 
 const vizEl = document.getElementById('viz')
 const resetEl = document.getElementById('reset')
@@ -826,57 +770,30 @@ const render = () => {
   }
 
   const spot = getSelectedSpot()
-  const recStd = recommend({
+  const rec = recommend({
     heightCm,
     weightKg,
     ability,
     conditions: latestConditions,
     spot,
-    mode: 'standard',
-  })
-  const recPerf = recommend({
-    heightCm,
-    weightKg,
-    ability,
-    conditions: latestConditions,
-    spot,
-    mode: 'performance',
   })
 
-  boardTypeEl.textContent = recStd.boardType
-  allaroundLengthEl.textContent = `${recStd.lengthHumanMin} – ${recStd.lengthHumanMax}`
-  allaroundVolumeEl.textContent = `${recStd.volumeMin} – ${recStd.volumeMax} L`
+  boardTypeEl.textContent = rec.boardType
+  allaroundLengthEl.textContent = `${rec.lengthHumanMin} – ${rec.lengthHumanMax}`
+  allaroundVolumeEl.textContent = `${rec.volumeMin} – ${rec.volumeMax} L`
 
-  explainEl.textContent = recStd.explanation?.summary ?? ''
+  explainEl.textContent = rec.explanation?.summary ?? ''
   prosEl.innerHTML = ''
-  ;(recStd.explanation?.pros ?? []).slice(0, 5).forEach((t) => {
+  ;(rec.explanation?.pros ?? []).slice(0, 5).forEach((t) => {
     const li = document.createElement('li')
     li.textContent = t
     prosEl.appendChild(li)
   })
   consEl.innerHTML = ''
-  ;(recStd.explanation?.cons ?? []).slice(0, 5).forEach((t) => {
+  ;(rec.explanation?.cons ?? []).slice(0, 5).forEach((t) => {
     const li = document.createElement('li')
     li.textContent = t
     consEl.appendChild(li)
-  })
-
-  boardTypePerfEl.textContent = recPerf.boardType
-  lengthPerfEl.textContent = `${recPerf.lengthHumanMin} – ${recPerf.lengthHumanMax}`
-  volumePerfEl.textContent = `${recPerf.volumeMin} – ${recPerf.volumeMax} L`
-
-  explainPerfEl.textContent = recPerf.explanation?.summary ?? ''
-  prosPerfEl.innerHTML = ''
-  ;(recPerf.explanation?.pros ?? []).slice(0, 5).forEach((t) => {
-    const li = document.createElement('li')
-    li.textContent = t
-    prosPerfEl.appendChild(li)
-  })
-  consPerfEl.innerHTML = ''
-  ;(recPerf.explanation?.cons ?? []).slice(0, 5).forEach((t) => {
-    const li = document.createElement('li')
-    li.textContent = t
-    consPerfEl.appendChild(li)
   })
 
   const waveFt = latestConditions?.waveFt
@@ -886,13 +803,13 @@ const render = () => {
     waveFt: Number.isFinite(waveFt) ? waveFt : null,
     periodS: Number.isFinite(periodS) ? periodS : null,
     riderHeightCm: heightCm,
-    boardLengthCm: recStd.lengthCmMax,
+    boardLengthCm: rec.lengthCmMax,
   })
 
   resultsEl.hidden = false
   setHint('')
 
-  if (recStd.isExtreme && ability !== 'advanced') {
+  if (rec.isExtreme && ability !== 'advanced') {
     warningBodyEl.textContent =
       'Forecast conditions appear heavy. If you’re not an advanced surfer, consider sitting it out or choosing a sheltered spot.'
     warningEl.hidden = false

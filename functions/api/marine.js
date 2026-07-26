@@ -22,7 +22,7 @@ export async function onRequestGet({ request }) {
   upstream.searchParams.set('current', 'wave_height,wave_period,wind_wave_height,wind_wave_period,wind_wave_direction')
   upstream.searchParams.set(
     'hourly',
-    'wave_height,wave_period,wind_wave_height,wind_wave_period,wind_wave_direction,tide_height',
+    'wave_height,wave_period,wind_wave_height,wind_wave_period,wind_wave_direction',
   )
   upstream.searchParams.set('timezone', 'auto')
 
